@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.golang.todo.gorift"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+  <application android:label="Gorift" android:debuggable="true">
+    <activity android:name="org.golang.app.GoNativeActivity"
+              android:label="Gorift"
+              android:launchMode="singleTask"
+              android:configChanges="orientation|keyboardHidden">
+      <meta-data android:name="android.app.lib_name" android:value="gorift" />
+
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.oculus.intent.category.VR" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
