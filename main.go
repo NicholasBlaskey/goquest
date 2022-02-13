@@ -74,6 +74,7 @@ import "C"
 import (
 	"fmt"
 	"log"
+	"math"
 	"time"
 	"unsafe"
 
@@ -159,7 +160,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		// Enter VRMode
 		appEnterVRMode(vrApp)
 
-		for i := 0; i < 1000; i++ {
+		for {
 			time.Sleep(10 * time.Millisecond)
 			// Draw frame
 			vrApp.FrameIndex++
@@ -167,7 +168,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
 			log.Printf("tracking %+v\n", tracking)
 
-			layer := r.Render(tracking)
+			layer := r.Render(tracking, float32(displayTime))
 			frame := &C.ovrSubmitFrameDescription2{}
 			frame.Flags = 0
 			frame.SwapInterval = 1
@@ -499,7 +500,7 @@ uniform mat4 uProjectionMatrix;
 
 out vec3 vColor;
 void main() {
-	gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition * 0.1, 1.0);
+	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition * 0.1, 1.0)));
 	vColor = aColor;
 }
 `
@@ -596,7 +597,7 @@ func (r *Renderer) createProgram() error {
 	return nil
 }
 
-func (r *Renderer) Render(tracking C.ovrTracking2) C.ovrLayerProjection2 {
+func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
 	//func (r *Renderer) Render() C.ovrLayerCube2 {
 	// Calculate model?
 
@@ -608,7 +609,13 @@ func (r *Renderer) Render(tracking C.ovrTracking2) C.ovrLayerProjection2 {
 	//layer := C.vrapi_DefaultLayerCube2()
 	//layer := C.vrapi_DefaultLayerSolidColorProjection2(&C.ovrVector4f{0.3, 0.5, 0.3, 1.0})
 
-	model := C.ovrMatrix4f_CreateTranslation(0.0, 0.0, -1.0)
+	model := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
+	rot := C.ovrMatrix4f_CreateRotation(C.float(dt), C.float(dt), 0.0)
+	scaleAmount := C.float(float32(math.Sin(float64(dt))))
+	scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
+	model = C.ovrMatrix4f_Multiply(&model, &rot)
+	model = C.ovrMatrix4f_Multiply(&model, &scale)
+	model = C.ovrMatrix4f_Transpose(&model)
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
