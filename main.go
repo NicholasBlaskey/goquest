@@ -1,10 +1,8 @@
-// Copyright 2014 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 //go:build darwin || linux || windows
 // +build android
+// +build gldebug
 
+// TODO above build tag?? Does not seem to be working?!!?
 // An app that draws a green triangle on a red background.
 //
 // In order to build this program as an Android APK, using the gomobile tool.
@@ -31,7 +29,7 @@ package main
 // https://github.com/makepad/hello_quest/blob/master/build.sh
 
 /*
-#cgo CPPFLAGS: -I./Include
+#cgo CPPFLAGS: -I./Include -I/usr/local/include
 #cgo LDFLAGS: -v -march=armv8-a -shared -L./lib/arm64-v8a/ -lvrapi -landroid
 
 //-Wl --wrap=onNativeWindowCreated
@@ -78,15 +76,18 @@ import (
 	"time"
 	"unsafe"
 
+	//"github.com/go-gl/gl/v2.1/gl"
 	"golang.org/x/mobile/app"
 
 	//	"runtime"
 	//"github.com/monzo/gomobile/app"
 
+	//gl "github.com/go-gl/gl/v3.1/gles2"
+
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/exp/app/debug"
 	"golang.org/x/mobile/exp/gl/glutil"
-	//"golang.org/x/mobile/gl"
+	"golang.org/x/mobile/gl"
 	//	internalApp "golang.org/x/mobile/internal/app"
 	//internalApp "golang.org/x/mobile/internal/app"
 )
@@ -150,7 +151,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 
 		// Init renderer
 		log.Println("Creating renderer")
-		r, err := rendererCreate(vrApp.Java)
+		r, err := rendererCreate(vrApp, vrApp.Java)
 		if err != nil {
 			return err
 		}
@@ -384,6 +385,7 @@ func createEGL() (*EGL, error) {
 }
 
 type Renderer struct {
+	VRApp        *App
 	Width        int
 	Height       int
 	Framebuffers []*Framebuffer
@@ -402,8 +404,8 @@ type Program struct {
 	UniformLocations map[string]C.int
 }
 
-func rendererCreate(java *C.ovrJava) (*Renderer, error) {
-	r := &Renderer{}
+func rendererCreate(vrApp *App, java *C.ovrJava) (*Renderer, error) {
+	r := &Renderer{VRApp: vrApp}
 	r.Width = int(C.vrapi_GetSystemPropertyInt(
 		java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH))
 	r.Height = int(C.vrapi_GetSystemPropertyInt(
@@ -666,7 +668,15 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		//log.Println(r.Program.UniformLocations)
 
 		C.glBindVertexArray(r.Geometry.VertexArray)
-		C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
+		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
+
+		// Using gomobiles gl library
+		r.VRApp.GL.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
+		log.Printf("%+v GLCONTEXT", r.VRApp.GL)
+		app.OurDoWork()
+		time.Sleep(5 * time.Millisecond)
+		//r.VRApp.GL.DoWork()
+		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
 		log.Printf("draw glGetError %+v\n", C.glGetError())
 
 		C.glBindVertexArray(0)
@@ -777,6 +787,7 @@ type App struct {
 	EGL        *EGL
 	AndroidApp app.App
 	FrameIndex int
+	GL         gl.Context
 }
 
 func appEnterVRMode(vrApp *App) {
@@ -829,18 +840,24 @@ func main() {
 
 		// Init vr api
 		log.Println("Initializing vrapi")
-		err := app.RunOnJVM(initVRAPI(vrApp.Java, vrApp))
-		if err != nil {
-			panic(err)
-		}
+
+		go func() {
+			err := app.RunOnJVM(initVRAPI(vrApp.Java, vrApp))
+			if err != nil {
+				panic(err)
+			}
+		}()
 
 		log.Println("Starting")
 		for e := range a.Events() {
 			log.Printf("Event of type %T", e)
 			switch e := a.Filter(e).(type) {
 			case lifecycle.Event:
+				//panic("LIFE CYCLE!!!")
 				log.Println("Lifecycle event", e.String())
-
+				vrApp.GL = e.DrawContext.(gl.Context)
+				log.Printf("%+v", vrApp.GL)
+				//panic("EH")
 				//C.onWindowFocusChanged
 				/*
 							switch e.Crosses(lifecycle.StageAlive) {
