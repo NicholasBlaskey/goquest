@@ -113,6 +113,39 @@ var (
 	touchY float32
 )
 
+/*
+func init() {
+	runtime.LockOSThread()
+}
+*/
+
+func initGL() (gl.Context, gl.Worker) {
+	//runtime.LockOSThread()
+	//runtime.LockOSThread()
+
+	//runtime.LockOSThread()
+
+	log.Println("Initializing gl")
+	glc, worker := gl.NewContext()
+
+	/*
+		workAvailable := worker.WorkAvailable()
+		go func() {
+			for {
+				log.Println("Starting listen")
+				select {
+				case <-workAvailable:
+					log.Println("Work ready")
+					worker.DoWork()
+					log.Println("Finishing work")
+				}
+			}
+		}()
+	*/
+
+	return glc, worker
+}
+
 // export myWindow
 func myWindow(activity *C.ANativeActivity, window *C.ANativeWindow) {
 	for i := 0; i < 100; i++ {
@@ -161,7 +194,11 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		// Enter VRMode
 		appEnterVRMode(vrApp)
 
+		vrApp.GL, vrApp.Worker = initGL()
+
+		time.Sleep(1 * time.Second)
 		for {
+			log.Println("Starting frame?\n\n")
 			time.Sleep(10 * time.Millisecond)
 			// Draw frame
 			vrApp.FrameIndex++
@@ -667,39 +704,26 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		log.Printf("layer!!! %+v\n", layer)
 		//log.Println(r.Program.UniformLocations)
 
+		log.Println("Before block")
 		C.glBindVertexArray(r.Geometry.VertexArray)
+		log.Println("After block")
 		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
+		r.VRApp.GL.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
+		r.VRApp.Worker.DoWork()
+
+		time.Sleep(5 * time.Millisecond)
 
 		// Using gomobiles gl library
-		r.VRApp.GL.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
+		//r.VRApp.GL.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
 		log.Printf("%+v GLCONTEXT", r.VRApp.GL)
-		app.OurDoWork()
-		time.Sleep(5 * time.Millisecond)
+		//app.OurDoWork()
+		//time.Sleep(5 * time.Millisecond)
 		//r.VRApp.GL.DoWork()
 		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
 		log.Printf("draw glGetError %+v\n", C.glGetError())
 
 		C.glBindVertexArray(0)
 		C.glUseProgram(0)
-
-		/*
-			// Scissor framebuffer
-			C.glClearColor(0.3, 0.9, 0.3, 1.0)
-			C.glScissor(0, 0, 1, h)
-			C.glClear(C.GL_COLOR_BUFFER_BIT)
-
-			C.glClearColor(0.3, 0.3, 0.9, 1.0)
-			C.glScissor(w-1, 0, 1, h)
-			C.glClear(C.GL_COLOR_BUFFER_BIT)
-
-			C.glClearColor(0.9, 0.3, 0.9, 1.0)
-			C.glScissor(0, 0, w, 1)
-			C.glClear(C.GL_COLOR_BUFFER_BIT)
-
-			C.glClearColor(0.9, 0.9, 0.3, 1.0)
-			C.glScissor(0, h-1, w, 1)
-			C.glClear(C.GL_COLOR_BUFFER_BIT)
-		*/
 
 		C.glFlush()
 		C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, 0)
@@ -788,6 +812,7 @@ type App struct {
 	AndroidApp app.App
 	FrameIndex int
 	GL         gl.Context
+	Worker     gl.Worker
 }
 
 func appEnterVRMode(vrApp *App) {
@@ -837,6 +862,10 @@ func main() {
 	log.Println("Starting main")
 	app.Main(func(a app.App) {
 		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a}
+		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
+
+		time.Sleep(1 * time.Second)
+		log.Println("After init gl")
 
 		// Init vr api
 		log.Println("Initializing vrapi")
@@ -852,62 +881,69 @@ func main() {
 		for e := range a.Events() {
 			log.Printf("Event of type %T", e)
 			switch e := a.Filter(e).(type) {
+
 			case lifecycle.Event:
+				log.Printf("Starting %+v", e)
+				//vrApp.GL = initGL()
+			}
+
+			/*
 				//panic("LIFE CYCLE!!!")
 				log.Println("Lifecycle event", e.String())
 				vrApp.GL = e.DrawContext.(gl.Context)
 				log.Printf("%+v", vrApp.GL)
-				//panic("EH")
-				//C.onWindowFocusChanged
-				/*
-							switch e.Crosses(lifecycle.StageAlive) {
-							//switch e.Crosses(lifecycle.StageVisible) {
-							case lifecycle.CrossOn:
-								log.Println("Starting")
+			*/
+			//panic("EH")
+			//C.onWindowFocusChanged
+			/*
+						switch e.Crosses(lifecycle.StageAlive) {
+						//switch e.Crosses(lifecycle.StageVisible) {
+						case lifecycle.CrossOn:
+							log.Println("Starting")
 
-								var ok bool
-								//glctx, ok = e.DrawContext.(gl.Context)
-									if !ok {
-										log.Println("Could not get draw context")
-									}
+							var ok bool
+							//glctx, ok = e.DrawContext.(gl.Context)
+								if !ok {
+									log.Println("Could not get draw context")
+								}
 
-								onStart(glctx)
-								a.Send(paint.Event{})
-							case lifecycle.CrossOff:
-								log.Println("Ending")
-								onStop(glctx)
-								glctx = nil
-							default:
-								log.Println("Not on or off")
-							}
-						case size.Event:
-							log.Println("Size event")
-							sz = e
-							touchX = float32(sz.WidthPx / 2)
-							touchY = float32(sz.HeightPx / 2)
-						case paint.Event:
-							//log.Println("Paint event")
-							if glctx == nil || e.External {
-								// As we are actively painting as fast as
-								// we can (usually 60 FPS), skip any paint
-								// events sent by the system.
-								continue
-							}
-
-							onPaint(glctx, sz)
-							a.Publish()
-							// Drive the animation by preparing to paint the next frame
-							// after this one is shown.
+							onStart(glctx)
 							a.Send(paint.Event{})
-						case touch.Event:
-							log.Println("Touch event")
-							touchX = e.X
-							touchY = e.Y
+						case lifecycle.CrossOff:
+							log.Println("Ending")
+							onStop(glctx)
+							glctx = nil
 						default:
-							log.Printf("Unrecognized event %+v", e)
-					}
-				*/
-			}
+							log.Println("Not on or off")
+						}
+					case size.Event:
+						log.Println("Size event")
+						sz = e
+						touchX = float32(sz.WidthPx / 2)
+						touchY = float32(sz.HeightPx / 2)
+					case paint.Event:
+						//log.Println("Paint event")
+						if glctx == nil || e.External {
+							// As we are actively painting as fast as
+							// we can (usually 60 FPS), skip any paint
+							// events sent by the system.
+							continue
+						}
+
+						onPaint(glctx, sz)
+						a.Publish()
+						// Drive the animation by preparing to paint the next frame
+						// after this one is shown.
+						a.Send(paint.Event{})
+					case touch.Event:
+						log.Println("Touch event")
+						touchX = e.X
+						touchY = e.Y
+					default:
+						log.Printf("Unrecognized event %+v", e)
+				}
+			*/
+			//}
 		}
 	})
 }
