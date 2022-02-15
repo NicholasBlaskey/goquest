@@ -113,7 +113,10 @@ var (
 	touchY float32
 )
 
+var glctx gl.Context
+
 /*
+// So what we want is to actually lock this GL thread to here?
 func init() {
 	runtime.LockOSThread()
 }
@@ -195,6 +198,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		appEnterVRMode(vrApp)
 
 		vrApp.GL, vrApp.Worker = initGL()
+		glctx = vrApp.GL
 
 		time.Sleep(1 * time.Second)
 		for {
@@ -708,31 +712,38 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		C.glBindVertexArray(r.Geometry.VertexArray)
 		log.Println("After block")
 		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
-		r.VRApp.GL.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
-		r.VRApp.Worker.DoWork()
+		glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
+		//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 
-		time.Sleep(5 * time.Millisecond)
-
-		// Using gomobiles gl library
-		//r.VRApp.GL.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
-		log.Printf("%+v GLCONTEXT", r.VRApp.GL)
-		//app.OurDoWork()
-		//time.Sleep(5 * time.Millisecond)
-		//r.VRApp.GL.DoWork()
-		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
-		log.Printf("draw glGetError %+v\n", C.glGetError())
-
+		// Cleanup
+		//glctx.BindVertexArray(0)
 		C.glBindVertexArray(0)
+
+		//glctx.UseProgram(0)
 		C.glUseProgram(0)
 
+		//glctx.Flush()
 		C.glFlush()
+
+		//glctx.BindFramebuffer(GL.DRAW_FRAMEBUFFER, 0)
 		C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, 0)
 
-		// DRAW
+		//glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
 
 		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
 	}
+
+	// Unfortanetly its an all or nothing type thing.
+	// We need all of the statements to happen in order.
+	r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	time.Sleep(time.Millisecond * 5)
+	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+
 	return layer
 }
 
