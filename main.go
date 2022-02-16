@@ -690,63 +690,57 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 			&tracking.Eye[i].ProjectionMatrix)
 
 		// Bind framebuffer
-		C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
+		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
 
 		// Enable gl stuff
-		C.glEnable(C.GL_CULL_FACE)
-		C.glEnable(C.GL_SCISSOR_TEST)
-		C.glEnable(C.GL_DEPTH_TEST)
+		glctx.Enable(gl.CULL_FACE)
+		glctx.Enable(gl.SCISSOR_TEST)
+		glctx.Enable(gl.DEPTH_TEST)
 
 		// viewport, scissor, set color
-		w, h := C.int(f.Width), C.int(f.Height)
-		C.glViewport(0, 0, w, h)
-		C.glScissor(0, 0, w, h)
-		//if i == 0 {
-		C.glClearColor(0.15, 0.15, 0.15, 1.0)
-		//} else {
-		//	C.glClearColor(0.3, 0.5, 0.5, 1.0)
-		//}
-		C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
+		glctx.Viewport(0, 0, f.Width, f.Height)
+		// Why this int32 while viewport int???
+		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
+		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
+		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		// TODO are we binding this right?
-		C.glUseProgram(r.Program.GLProgram)
-		C.glUniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], 1, C.GL_FALSE,
-			(*C.GLfloat)(unsafe.Pointer(&model)))
-		log.Printf("model glGetError %+v", C.glGetError())
+		ident := []float32{ // TODO convert the mvp to floats
+			1.0, 0.0, 0.0, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			0.0, 0.0, 0.0, 1.0,
+		}
+		glctx.UseProgram(r.Program.GLProgram)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], ident)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], ident)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], ident)
+		/*
+			C.glUniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], 1, C.GL_FALSE,
+				(*C.GLfloat)(unsafe.Pointer(&model)))
+			log.Printf("model glGetError %+v", C.glGetError())
 
-		C.glUniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], 1, C.GL_FALSE,
-			(*C.GLfloat)(unsafe.Pointer(&view)))
-		log.Printf("view glGetError %+v", C.glGetError())
+			C.glUniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], 1, C.GL_FALSE,
+				(*C.GLfloat)(unsafe.Pointer(&view)))
+			log.Printf("view glGetError %+v", C.glGetError())
 
-		C.glUniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], 1, C.GL_FALSE,
-			(*C.GLfloat)(unsafe.Pointer(&projection)))
-		log.Printf("projection glGetError %+v", C.glGetError())
+			C.glUniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], 1, C.GL_FALSE,
+				(*C.GLfloat)(unsafe.Pointer(&projection)))
+			log.Printf("projection glGetError %+v", C.glGetError())
+		*/
 
 		log.Printf("layer!!! %+v\n", layer)
 		//log.Println(r.Program.UniformLocations)
 
-		log.Println("Before block")
-		C.glBindVertexArray(r.Geometry.VertexArray)
-		log.Println("After block")
-		//C.glDrawElements(C.GL_TRIANGLES, 36, C.GL_UNSIGNED_SHORT, nil)
+		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
-		//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 
 		// Cleanup
-		//glctx.BindVertexArray(0)
-		C.glBindVertexArray(0)
-
-		//glctx.UseProgram(0)
-		C.glUseProgram(0)
-
-		//glctx.Flush()
-		C.glFlush()
-
-		//glctx.BindFramebuffer(GL.DRAW_FRAMEBUFFER, 0)
-		C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, 0)
-
-		//glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-		C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
+		glctx.BindVertexArray(gl.VertexArray{0})
+		glctx.UseProgram(gl.Program{Value: 0})
+		glctx.Flush()
+		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
+		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
 	}
@@ -791,7 +785,7 @@ func (r *Renderer) FramebufferCreate() *Framebuffer {
 	// Create depth renderbuffers and framebuffers
 	for i := 0; i < f.SwapChainLength; i++ {
 		f.Renderbuffers = append(f.Renderbuffers, glctx.CreateRenderbuffer())
-		f.Framebuffers = append(f.RenderBuffers, glctx.CreateFramebuffer())
+		f.Framebuffers = append(f.Framebuffers, glctx.CreateFramebuffer())
 	}
 	/*
 		// Allocate depth render buffers + framebuffers
