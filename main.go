@@ -753,8 +753,8 @@ type Framebuffer struct {
 	Width                 int
 	Height                int
 	ColorTextureSwapChain *C.ovrTextureSwapChain
-	RenderBuffers         []C.GLuint
-	Framebuffers          []C.GLuint
+	Renderbuffers         []gl.Renderbuffer
+	Framebuffers          []gl.Framebuffer
 }
 
 func (r *Renderer) FramebufferCreate() *Framebuffer {
@@ -771,44 +771,76 @@ func (r *Renderer) FramebufferCreate() *Framebuffer {
 	f.SwapChainLength = int(C.vrapi_GetTextureSwapChainLength(f.ColorTextureSwapChain))
 	log.Printf("Length of SwapChain %d\n", f.SwapChainLength)
 
-	// Allocate depth render buffers + framebuffers
-	f.RenderBuffers = make([]C.GLuint, f.SwapChainLength)
-	f.Framebuffers = make([]C.GLuint, f.SwapChainLength)
+	// Create depth renderbuffers and framebuffers
+	for i := 0; i < f.SwapChainLength; i++ {
+		f.Renderbuffers = append(f.Renderbuffers, glctx.CreateRenderbuffer())
+		f.Framebuffers = append(f.RenderBuffers, glctx.CreateFramebuffer())
+	}
+	/*
+		// Allocate depth render buffers + framebuffers
+		f.RenderBuffers = make([]C.GLuint, f.SwapChainLength)
+		f.Framebuffers = make([]C.GLuint, f.SwapChainLength)
 
-	// Generate frame + render buffers
-	C.glGenRenderbuffers(C.int(f.SwapChainLength), &f.RenderBuffers[0])
-	C.glGenFramebuffers(C.int(f.SwapChainLength), &f.Framebuffers[0])
-	log.Printf("Generated framebuffers %+v generated render buffers %+v\n",
-		f.Framebuffers, f.RenderBuffers)
+		// Generate frame + render buffers
+		C.glGenRenderbuffers(C.int(f.SwapChainLength), &f.RenderBuffers[0])
+		C.glGenFramebuffers(C.int(f.SwapChainLength), &f.Framebuffers[0])
+		log.Printf("Generated framebuffers %+v generated render buffers %+v\n",
+			f.Framebuffers, f.RenderBuffers)
+	*/
 
 	log.Println(f.SwapChainLength)
 	for i := 0; i < f.SwapChainLength; i++ {
-		colorTexture := C.vrapi_GetTextureSwapChainHandle(
+		colorTextureC := C.vrapi_GetTextureSwapChainHandle(
 			f.ColorTextureSwapChain, C.int(i))
-		log.Printf("Creating color texture i=%d colorTexture=%d", i, colorTexture)
-		C.glBindTexture(C.GL_TEXTURE_2D, colorTexture)
-		C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
-		C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MAG_FILTER, C.GL_LINEAR)
-		C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
-		C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
-		C.glBindTexture(C.GL_TEXTURE_2D, 0)
+		colorTexture := gl.Texture{uint32(colorTextureC)}
 
-		log.Printf("Creating depth renderbuffer %d", i)
-		C.glBindRenderbuffer(C.GL_RENDERBUFFER, f.RenderBuffers[i])
-		C.glRenderbufferStorage(C.GL_RENDERBUFFER, C.GL_DEPTH_COMPONENT24,
-			C.int(f.Width), C.int(f.Height))
-		C.glBindRenderbuffer(C.GL_RENDERBUFFER, 0)
+		glctx.BindTexture(gl.TEXTURE_2D, colorTexture)
+		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+		/*
+			log.Printf("Creating color texture i=%d colorTexture=%d", i, colorTexture)
+			C.glBindTexture(C.GL_TEXTURE_2D, colorTexture)
+			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
+			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MAG_FILTER, C.GL_LINEAR)
+			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
+			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
+			C.glBindTexture(C.GL_TEXTURE_2D, 0)
+		*/
+
+		glctx.BindRenderbuffer(gl.RENDERBUFFER, f.Renderbuffers[i])
+		glctx.RenderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, f.Width, f.Height)
+		glctx.BindRenderbuffer(gl.RENDERBUFFER, gl.Renderbuffer{})
+		/*
+			log.Printf("Creating depth renderbuffer %d", i)
+			C.glBindRenderbuffer(C.GL_RENDERBUFFER, f.RenderBuffers[i])
+			C.glRenderbufferStorage(C.GL_RENDERBUFFER, C.GL_DEPTH_COMPONENT24,
+				C.int(f.Width), C.int(f.Height))
+			C.glBindRenderbuffer(C.GL_RENDERBUFFER, 0)
+		*/
 
 		log.Printf("Creating framebuffer %d", i)
-		C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, f.Framebuffers[i])
-		C.glFramebufferTexture2D(C.GL_DRAW_FRAMEBUFFER, C.GL_COLOR_ATTACHMENT0,
-			C.GL_TEXTURE_2D, colorTexture, 0)
-		C.glFramebufferRenderbuffer(C.GL_DRAW_FRAMEBUFFER, C.GL_DEPTH_ATTACHMENT,
-			C.GL_RENDERBUFFER, f.RenderBuffers[i])
-		status := C.glCheckFramebufferStatus(C.GL_DRAW_FRAMEBUFFER)
-		if status != C.GL_FRAMEBUFFER_COMPLETE {
+		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[i])
+		glctx.FramebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+			gl.TEXTURE_2D, colorTexture, 0)
+		glctx.FramebufferRenderbuffer(gl.DRAW_FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
+			gl.RENDERBUFFER, f.Renderbuffers[i])
+		status := glctx.CheckFramebufferStatus(gl.DRAW_FRAMEBUFFER)
+		if status != gl.FRAMEBUFFER_COMPLETE {
 			panic("Can't create framebuffer")
 		}
+		/*
+			C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, f.Framebuffers[i])
+			C.glFramebufferTexture2D(C.GL_DRAW_FRAMEBUFFER, C.GL_COLOR_ATTACHMENT0,
+				C.GL_TEXTURE_2D, colorTexture, 0)
+			C.glFramebufferRenderbuffer(C.GL_DRAW_FRAMEBUFFER, C.GL_DEPTH_ATTACHMENT,
+				C.GL_RENDERBUFFER, f.RenderBuffers[i])
+			status := C.glCheckFramebufferStatus(C.GL_DRAW_FRAMEBUFFER)
+			if status != C.GL_FRAMEBUFFER_COMPLETE {
+				panic("Can't create framebuffer")
+			}
+		*/
 	}
 
 	log.Println("Finished creating framebuffer")
