@@ -70,9 +70,11 @@ void submitFrame(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerProj
 import "C"
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math"
+	"reflect"
 	"time"
 	"unsafe"
 
@@ -83,9 +85,9 @@ import (
 	//"github.com/monzo/gomobile/app"
 
 	//gl "github.com/go-gl/gl/v3.1/gles2"
-
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/exp/app/debug"
+	"golang.org/x/mobile/exp/f32"
 	"golang.org/x/mobile/exp/gl/glutil"
 	"golang.org/x/mobile/gl"
 	//	internalApp "golang.org/x/mobile/internal/app"
@@ -435,14 +437,14 @@ type Renderer struct {
 }
 
 type Geometry struct {
-	VertexArray  C.uint
-	VertexBuffer C.uint
-	IndexBuffer  C.uint
+	VertexArray  gl.VertexArray
+	VertexBuffer gl.Buffer
+	IndexBuffer  gl.Buffer
 }
 
 type Program struct {
-	GLProgram        C.uint
-	UniformLocations map[string]C.int
+	GLProgram        gl.Program
+	UniformLocations map[string]gl.Uniform
 }
 
 func rendererCreate(vrApp *App, java *C.ovrJava) (*Renderer, error) {
@@ -453,27 +455,28 @@ func rendererCreate(vrApp *App, java *C.ovrJava) (*Renderer, error) {
 		java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT))
 	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
 
+	// Framebuffers
 	for i := 0; i < int(C.VRAPI_FRAME_LAYER_EYE_MAX); i++ {
 		log.Printf("Buffer create %d\n", i)
 		r.Framebuffers = append(r.Framebuffers, r.FramebufferCreate())
 	}
 
-	log.Println("Finished creating renderer")
-
-	// Framebuffer issue? Not likely
-	// Shader issue? Not likely
-	// Shader creation issue? Not likely
-	// Uniform issue? Not likely
-	// Attrib issue?
-	// Geoemtry issue?
-	// Drawing issue?
-
+	// Shaders
 	if err := r.createProgram(); err != nil {
 		return nil, err
 	}
+
+	// Geometry
 	r.createGeometry()
 
 	return r, nil
+}
+
+func toByteSlice(s []uint16) []byte {
+	h := (*reflect.SliceHeader)(unsafe.Pointer(&s))
+	h.Len *= 2
+	h.Cap *= 2
+	return *(*[]byte)(unsafe.Pointer(h))
 }
 
 func (r *Renderer) createGeometry() {
@@ -487,7 +490,7 @@ func (r *Renderer) createGeometry() {
 		+1.0, -1.0, +1.0, 1.0, 0.0, 1.0,
 		+1.0, -1.0, -1.0, 1.0, 0.0, 0.0,
 	}
-	indices := []int16{
+	indices := []uint16{
 		0, 2, 1, 2, 0, 3,
 		4, 6, 5, 6, 4, 7,
 		2, 6, 7, 7, 1, 2,
@@ -497,40 +500,74 @@ func (r *Renderer) createGeometry() {
 	}
 
 	r.Geometry = &Geometry{}
-	C.glGenVertexArrays(1, &r.Geometry.VertexArray)
-	C.glBindVertexArray(r.Geometry.VertexArray)
+	r.Geometry.VertexArray = glctx.CreateVertexArray()
+	glctx.BindVertexArray(r.Geometry.VertexArray)
+	/*
+		C.glGenVertexArrays(1, &r.Geometry.VertexArray)
+		C.glBindVertexArray(r.Geometry.VertexArray)
+	*/
 
-	C.glGenBuffers(1, &r.Geometry.VertexBuffer)
-	C.glBindBuffer(C.GL_ARRAY_BUFFER, r.Geometry.VertexBuffer)
-	C.glBufferData(C.GL_ARRAY_BUFFER, C.long(len(vertices)*4),
-		unsafe.Pointer(&vertices[0]), C.GL_STATIC_DRAW)
+	r.Geometry.VertexBuffer = glctx.CreateBuffer()
+	glctx.BindBuffer(gl.ARRAY_BUFFER, r.Geometry.VertexBuffer)
+	glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
+		gl.STATIC_DRAW)
+	/*
+		C.glGenBuffers(1, &r.Geometry.VertexBuffer)
+		C.glBindBuffer(C.GL_ARRAY_BUFFER, r.Geometry.VertexBuffer)
+		C.glBufferData(C.GL_ARRAY_BUFFER, C.long(len(vertices)*4),
+			unsafe.Pointer(&vertices[0]), C.GL_STATIC_DRAW)
+	*/
 
-	// Attribs TODO verify this
+	pos := gl.Attrib{0}
+	glctx.EnableVertexAttribArray(pos)
+	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*6, 0)
+	col := gl.Attrib{1}
+	glctx.EnableVertexAttribArray(col)
+	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*6, 4*3)
 	/*
 		C.glEnableVertexAttribArray(0)
-		C.glVertexAttribPointer(0, 3, C.GL_FLOAT, 0, 4*3, unsafe.Pointer(uintptr(0)))
+		C.glVertexAttribPointer(0, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(0)))
 		C.glEnableVertexAttribArray(1)
-		C.glVertexAttribPointer(1, 3, C.GL_FLOAT, 0, 4*3, unsafe.Pointer(uintptr(4*3)))
+		C.glVertexAttribPointer(1, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(4*3)))
 	*/
-	C.glEnableVertexAttribArray(0)
-	C.glVertexAttribPointer(0, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(0)))
-	C.glEnableVertexAttribArray(1)
-	C.glVertexAttribPointer(1, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(4*3)))
 
+	r.Geometry.IndexBuffer = glctx.CreateBuffer()
+	glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
+	glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices), gl.STATIC_DRAW)
 	/*
-			    { 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex),
-		      (const GLvoid*)offsetof(struct vertex, position) },
-		    { 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex),
-		      (const GLvoid*)offsetof(struct vertex, color) },
+		C.glGenBuffers(1, &r.Geometry.IndexBuffer)
+		C.glBindBuffer(C.GL_ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
+		C.glBufferData(C.GL_ELEMENT_ARRAY_BUFFER, C.long(len(indices)*2),
+			unsafe.Pointer(&indices[0]), C.GL_STATIC_DRAW)
+		C.glBindVertexArray(0)
 	*/
-
-	C.glGenBuffers(1, &r.Geometry.IndexBuffer)
-	C.glBindBuffer(C.GL_ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
-	C.glBufferData(C.GL_ELEMENT_ARRAY_BUFFER, C.long(len(indices)*2),
-		unsafe.Pointer(&indices[0]), C.GL_STATIC_DRAW)
-	C.glBindVertexArray(0)
-
 }
+
+/*
+func compileShader(shaderType C.GLenum, source string) (C.uint, error) {
+	shader := C.glCreateShader(shaderType)
+	sourceCString := C.CString(source)
+	defer C.free(unsafe.Pointer(sourceCString))
+	C.glShaderSource(shader, 1, &sourceCString, nil)
+	C.glCompileShader(shader)
+
+	var status C.GLint
+	C.glGetShaderiv(shader, C.GL_COMPILE_STATUS, &status)
+	if status == C.GL_FALSE { // TODO find why this wont error?
+		var length C.GLint
+		C.glGetShaderiv(shader, C.GL_INFO_LOG_LENGTH, &length)
+
+		errorMsg := (*C.char)(C.CBytes(make([]byte, length)))
+		defer C.free(unsafe.Pointer(errorMsg))
+		C.glGetShaderInfoLog(shader, length, nil, errorMsg)
+		s := C.GoStringN(errorMsg, length)
+
+		return shader, fmt.Errorf("cant compile shader with error of length %d %s\n%s",
+			length, s, source)
+	}
+	return shader, nil
+}
+*/
 
 const vertexShader = `
 #version 300 es
@@ -559,84 +596,64 @@ void main() {
 }
 `
 
-func compileShader(shaderType C.GLenum, source string) (C.uint, error) {
-	shader := C.glCreateShader(shaderType)
-	sourceCString := C.CString(source)
-	defer C.free(unsafe.Pointer(sourceCString))
-	C.glShaderSource(shader, 1, &sourceCString, nil)
-	C.glCompileShader(shader)
-
-	var status C.GLint
-	C.glGetShaderiv(shader, C.GL_COMPILE_STATUS, &status)
-	if status == C.GL_FALSE { // TODO find why this wont error?
-		var length C.GLint
-		C.glGetShaderiv(shader, C.GL_INFO_LOG_LENGTH, &length)
-
-		errorMsg := (*C.char)(C.CBytes(make([]byte, length)))
-		defer C.free(unsafe.Pointer(errorMsg))
-		C.glGetShaderInfoLog(shader, length, nil, errorMsg)
-		s := C.GoStringN(errorMsg, length)
-
-		return shader, fmt.Errorf("cant compile shader with error of length %d %s\n%s",
-			length, s, source)
-	}
-	return shader, nil
-}
-
 func (r *Renderer) createProgram() error {
-	r.Program = &Program{GLProgram: C.glCreateProgram()}
-	vs, err := compileShader(C.GL_VERTEX_SHADER, vertexShader)
-	if err != nil {
-		return err
-	}
-	fs, err := compileShader(C.GL_FRAGMENT_SHADER, fragmentShader)
+	p, err := glutil.CreateProgram(glctx, vertexShader, fragmentShader)
 	if err != nil {
 		return err
 	}
 
-	C.glAttachShader(r.Program.GLProgram, vs)
-	C.glAttachShader(r.Program.GLProgram, fs)
+	r.Program = &Program{GLProgram: p}
 
-	// Attribs (do something better than constants)
-	pos := C.CString("aPosition")
-	defer C.free(unsafe.Pointer(pos))
-	col := C.CString("aColor")
-	defer C.free(unsafe.Pointer(col))
-	C.glBindAttribLocation(r.Program.GLProgram, 0, pos)
-	C.glBindAttribLocation(r.Program.GLProgram, 1, col)
-
-	C.glLinkProgram(r.Program.GLProgram)
-	var status C.GLint
-	C.glGetProgramiv(r.Program.GLProgram, C.GL_LINK_STATUS, &status)
-	if status == C.GL_FALSE {
-		var length C.GLint
-		C.glGetProgramiv(r.Program.GLProgram, C.GL_INFO_LOG_LENGTH, &length)
-
-		errorMsg := (*C.char)(C.CBytes(make([]byte, length)))
-		defer C.free(unsafe.Pointer(errorMsg))
-		C.glGetProgramInfoLog(r.Program.GLProgram, length, nil, errorMsg)
-		s := C.GoStringN(errorMsg, length)
-
-		return fmt.Errorf("cant link program with error of length %d\n%s", length, s)
-	}
-
+	// Attribs (do something better)
+	glctx.BindAttribLocation(p, gl.Attrib{0}, "aPosition")
+	glctx.BindAttribLocation(p, gl.Attrib{1}, "aColor")
 	/*
-		uniform mat4 uModelMatrix;
-		uniform mat4 uViewMatrix;
-		uniform mat4 uProjectionMatrix;
+		// Attribs (do something better than constants)
+		pos := C.CString("aPosition")
+		defer C.free(unsafe.Pointer(pos))
+		col := C.CString("aColor")
+		defer C.free(unsafe.Pointer(col))
+		C.glBindAttribLocation(r.Program.GLProgram, 0, pos)
+		C.glBindAttribLocation(r.Program.GLProgram, 1, col)
 	*/
 
-	r.Program.UniformLocations = make(map[string]C.int)
-	for _, uniform := range []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix"} {
-		cUniformString := C.CString(uniform)
-		defer C.free(unsafe.Pointer(cUniformString))
-		r.Program.UniformLocations[uniform] = C.glGetUniformLocation(
-			r.Program.GLProgram, cUniformString)
+	// Uniforms (do something better)
+	r.Program.UniformLocations = make(map[string]gl.Uniform)
+	for _, name := range []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix"} {
+		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
+
 	/*
-		"uModelMatrix": C.glGetUniformLocation(r.Program.GLProgram,
+		r.Program = &Program{GLProgram: C.glCreateProgram()}
+		vs, err := compileShader(C.GL_VERTEX_SHADER, vertexShader)
+		if err != nil {
+			return err
+		}
+		fs, err := compileShader(C.GL_FRAGMENT_SHADER, fragmentShader)
+		if err != nil {
+			return err
+		}
+
+		C.glAttachShader(r.Program.GLProgram, vs)
+		C.glAttachShader(r.Program.GLProgram, fs)
+
+
+		C.glLinkProgram(r.Program.GLProgram)
+		var status C.GLint
+		C.glGetProgramiv(r.Program.GLProgram, C.GL_LINK_STATUS, &status)
+		if status == C.GL_FALSE {
+			var length C.GLint
+			C.glGetProgramiv(r.Program.GLProgram, C.GL_INFO_LOG_LENGTH, &length)
+
+			errorMsg := (*C.char)(C.CBytes(make([]byte, length)))
+			defer C.free(unsafe.Pointer(errorMsg))
+			C.glGetProgramInfoLog(r.Program.GLProgram, length, nil, errorMsg)
+			s := C.GoStringN(errorMsg, length)
+
+			return fmt.Errorf("cant link program with error of length %d\n%s", length, s)
 		}
 	*/
+
 	return nil
 }
 
