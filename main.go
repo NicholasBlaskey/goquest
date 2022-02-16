@@ -1,6 +1,6 @@
 //go:build darwin || linux || windows
-// +build android
 // +build gldebug
+// +build android
 
 // TODO above build tag?? Does not seem to be working?!!?
 // An app that draws a green triangle on a red background.
@@ -75,6 +75,7 @@ import (
 	"log"
 	"math"
 	"reflect"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -160,6 +161,8 @@ func myWindow(activity *C.ANativeActivity, window *C.ANativeWindow) {
 
 func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 	return func(vm, jniEnv, ctx uintptr) error {
+		runtime.LockOSThread()
+
 		// Create java object
 		java.Vm = (*C.JavaVM)(unsafe.Pointer(vm))
 		java.Env = (*C.JNIEnv)(unsafe.Pointer(jniEnv))
@@ -187,53 +190,72 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			return err
 		}
 
-		// Init renderer
-		log.Println("Creating renderer")
-		r, err := rendererCreate(vrApp, vrApp.Java)
-		if err != nil {
-			return err
-		}
-
-		log.Println(r)
-
 		// Enter VRMode
 		appEnterVRMode(vrApp)
 
+		// Init gl
 		vrApp.GL, vrApp.Worker = initGL()
 		glctx = vrApp.GL
 
-		time.Sleep(1 * time.Second)
+		log.Println("After entering vr mode")
+		go func() {
+			// Init renderer
+			log.Println("Creating renderer")
+			r, err := rendererCreate(vrApp, vrApp.Java)
+			if err != nil {
+				panic("ERR")
+				//return err
+			}
+
+			log.Println("Calling render loop")
+			time.Sleep(1 * time.Second)
+			log.Println("Starting render loop")
+			for {
+				log.Println("Starting frame?\n\n")
+				time.Sleep(10 * time.Millisecond)
+				// Draw frame
+				vrApp.FrameIndex++
+				displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
+					C.longlong(vrApp.FrameIndex))
+				tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+				log.Printf("tracking %+v\n", tracking)
+
+				layer := r.Render(tracking, float32(displayTime))
+				frame := &C.ovrSubmitFrameDescription2{}
+				frame.Flags = 0
+				frame.SwapInterval = 1
+				frame.FrameIndex = C.ulong(vrApp.FrameIndex)
+				frame.DisplayTime = displayTime
+				frame.LayerCount = 1
+				C.submitFrame(vrApp.OVR, frame, layer)
+
+				/*
+					log.Printf("display time %+v\n", displayTime)
+					log.Printf("layer%+v\n", layer)
+					log.Printf("frame %+v\n", frame)
+					log.Printf("layer %+v\n", layer)
+					log.Printf("layer header %+v\n", layer.Header)
+				*/
+
+				//f := C.vrapi_SubmitFrame2(vrApp.OVR, frame)
+				//log.Printf("Submitted frame! %+v", f)
+
+				// 0 means sucess!?!?
+			}
+		}()
+
+		workAvailable := vrApp.Worker.WorkAvailable()
 		for {
-			log.Println("Starting frame?\n\n")
-			time.Sleep(10 * time.Millisecond)
-			// Draw frame
-			vrApp.FrameIndex++
-			displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR, C.longlong(vrApp.FrameIndex))
-			tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
-			log.Printf("tracking %+v\n", tracking)
-
-			layer := r.Render(tracking, float32(displayTime))
-			frame := &C.ovrSubmitFrameDescription2{}
-			frame.Flags = 0
-			frame.SwapInterval = 1
-			frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-			frame.DisplayTime = displayTime
-			frame.LayerCount = 1
-			C.submitFrame(vrApp.OVR, frame, layer)
-
-			/*
-				log.Printf("display time %+v\n", displayTime)
-				log.Printf("layer%+v\n", layer)
-				log.Printf("frame %+v\n", frame)
-				log.Printf("layer %+v\n", layer)
-				log.Printf("layer header %+v\n", layer.Header)
-			*/
-
-			//f := C.vrapi_SubmitFrame2(vrApp.OVR, frame)
-			//log.Printf("Submitted frame! %+v", f)
-
-			// 0 means sucess!?!?
+			select {
+			case <-workAvailable:
+				log.Println("Got work")
+				log.Printf("%+v", workAvailable)
+				vrApp.Worker.DoWork()
+				log.Println("Did work")
+				// TODO add a case for submitting frame
+			}
 		}
+
 		//layer :=
 		//		}
 		return nil
@@ -462,12 +484,16 @@ func rendererCreate(vrApp *App, java *C.ovrJava) (*Renderer, error) {
 	}
 
 	// Shaders
+	log.Println("Started creating shaders")
 	if err := r.createProgram(); err != nil {
 		return nil, err
 	}
+	log.Println("Finished creating shaders")
 
 	// Geometry
+	log.Println("Started creating geometry")
 	r.createGeometry()
+	log.Println("Finished creating geometry")
 
 	return r, nil
 }
@@ -500,13 +526,17 @@ func (r *Renderer) createGeometry() {
 	}
 
 	r.Geometry = &Geometry{}
-	r.Geometry.VertexArray = glctx.CreateVertexArray()
+	log.Println("Bind")
+	r.Geometry.VertexArray = glctx.CreateVertexArray() // Problem statement
+	log.Println("Post create?")
 	glctx.BindVertexArray(r.Geometry.VertexArray)
+	log.Println("Post bind?")
 	/*
 		C.glGenVertexArrays(1, &r.Geometry.VertexArray)
 		C.glBindVertexArray(r.Geometry.VertexArray)
 	*/
 
+	log.Println("VertexBuffer")
 	r.Geometry.VertexBuffer = glctx.CreateBuffer()
 	glctx.BindBuffer(gl.ARRAY_BUFFER, r.Geometry.VertexBuffer)
 	glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
@@ -518,6 +548,7 @@ func (r *Renderer) createGeometry() {
 			unsafe.Pointer(&vertices[0]), C.GL_STATIC_DRAW)
 	*/
 
+	log.Println("attribs")
 	pos := gl.Attrib{0}
 	glctx.EnableVertexAttribArray(pos)
 	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*6, 0)
@@ -531,6 +562,7 @@ func (r *Renderer) createGeometry() {
 		C.glVertexAttribPointer(1, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(4*3)))
 	*/
 
+	log.Println("indexBuffer")
 	r.Geometry.IndexBuffer = glctx.CreateBuffer()
 	glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
 	glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices), gl.STATIC_DRAW)
@@ -784,6 +816,7 @@ func (r *Renderer) FramebufferCreate() *Framebuffer {
 
 	// Create depth renderbuffers and framebuffers
 	for i := 0; i < f.SwapChainLength; i++ {
+		log.Printf("renderbuffs%+v ctx%+v", glctx, glctx)
 		f.Renderbuffers = append(f.Renderbuffers, glctx.CreateRenderbuffer())
 		f.Framebuffers = append(f.Framebuffers, glctx.CreateFramebuffer())
 	}
