@@ -1,6 +1,5 @@
 //go:build darwin || linux || windows
-// +build gldebug
-// +build android
+// +build android, gldebug
 
 // TODO above build tag?? Does not seem to be working?!!?
 // An app that draws a green triangle on a red background.
@@ -76,6 +75,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -181,6 +181,8 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			return fmt.Errorf("Could not initialize vr API with status %+v", status)
 		}
 
+		mainThreadID := syscall.Gettid()
+
 		//End
 
 		// Init egl
@@ -198,7 +200,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		vrApp.GL, vrApp.Worker = initGL()
 		glctx = vrApp.GL
 
-		submitChan := make(chan int, 100)
+		submitChan := make(chan int)
 		var frame *C.ovrSubmitFrameDescription2
 		var layer C.ovrLayerProjection2
 		log.Println("After entering vr mode")
@@ -213,72 +215,10 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				//return err
 			}
 
-			/*
-				// Init renderer
-				log.Println("Creating renderer")
-				r, err := rendererCreate(vrApp, vrApp.Java)
-				if err != nil {
-					panic("ERR")
-					//return err
-				}
-			*/
-
 			log.Println("Calling render loop")
 			time.Sleep(1 * time.Second)
 			log.Println("Starting render loop")
 			for {
-
-				/*
-					log.Println("Starting frame?\n\n")
-					time.Sleep(10 * time.Millisecond)
-					// Draw frame
-					vrApp.FrameIndex++
-					displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
-						C.longlong(vrApp.FrameIndex))
-					tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
-					//log.Printf("tracking %+v\n", tracking)
-
-					layer = r.Render(tracking, float32(displayTime))
-					frame = &C.ovrSubmitFrameDescription2{}
-					frame.Flags = 0
-					frame.SwapInterval = 1
-					frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-					frame.DisplayTime = displayTime
-					frame.LayerCount = 1
-				*/
-				time.Sleep(10 * time.Millisecond)
-
-				submitChan <- 0
-				/*
-					log.Printf("display time %+v\n", displayTime)
-					log.Printf("layer%+v\n", layer)
-					log.Printf("frame %+v\n", frame)
-					log.Printf("layer %+v\n", layer)
-					log.Printf("layer header %+v\n", layer.Header)
-				*/
-
-				//f := C.vrapi_SubmitFrame2(vrApp.OVR, frame)
-				//log.Printf("Submitted frame! %+v", f)
-
-				// 0 means sucess!?!?
-			}
-		}()
-
-		runtime.LockOSThread()
-		workAvailable := vrApp.Worker.WorkAvailable()
-		for {
-			select {
-			case <-workAvailable:
-				//log.Println("Got work")
-				//				log.Printf("%+v", workAvailable)
-				log.Println("Work")
-				vrApp.Worker.DoWork()
-				//log.Println("Did work")
-				// TODO add a case for submitting frame
-			case <-submitChan:
-				log.Println("Submit")
-				//log.Println(frame, layer)
-
 				time.Sleep(10 * time.Millisecond)
 				// Draw frame
 				vrApp.FrameIndex++
@@ -287,24 +227,62 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
 				//log.Printf("tracking %+v\n", tracking)
 
-				l := C.vrapi_DefaultLayerProjection2()
-				go func() {
-					layer = r.Render(l, tracking, float32(displayTime))
-				}()
-
-				time.Sleep(10 * time.Millisecond)
+				layer = r.Render(tracking, float32(displayTime))
 				frame = &C.ovrSubmitFrameDescription2{}
 				frame.Flags = 0
 				frame.SwapInterval = 1
 				frame.FrameIndex = C.ulong(vrApp.FrameIndex)
 				frame.DisplayTime = displayTime
 				frame.LayerCount = 1
+
+				time.Sleep(10 * time.Millisecond)
+				log.Printf("Submitting frame %+v", syscall.Gettid())
+				submitChan <- 0
+			}
+		}()
+
+		log.Println(mainThreadID)
+		runtime.LockOSThread()
+		workAvailable := vrApp.Worker.WorkAvailable()
+		for {
+			select {
+			case <-workAvailable:
+				//log.Printf("(%d) Work id %+v mainthread%+v\n",
+				//	len(workAvailable), syscall.Gettid(), mainThreadID)
+				vrApp.Worker.DoWork()
+			case <-submitChan:
+				//log.Printf("(%d) Submit id %+v mainthread%+v\n",
+				//	len(submitChan), syscall.Gettid(), mainThreadID)
+				//log.Printf("frame %+v", frame)
 				C.submitFrame(vrApp.OVR, frame, layer)
+				frame = nil
+
+				/*
+					log.Printf("Submit id %+v\n", syscall.Gettid())
+
+					vrApp.FrameIndex++
+					displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
+						C.longlong(vrApp.FrameIndex))
+					tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+					//log.Printf("tracking %+v\n", tracking)
+
+					l := C.vrapi_DefaultLayerProjection2()
+					go func() {
+						layer = r.Render(l, tracking, float32(displayTime))
+					}()
+
+					time.Sleep(10 * time.Millisecond)
+					frame = &C.ovrSubmitFrameDescription2{}
+					frame.Flags = 0
+					frame.SwapInterval = 1
+					frame.FrameIndex = C.ulong(vrApp.FrameIndex)
+					frame.DisplayTime = displayTime
+					frame.LayerCount = 1
+					C.submitFrame(vrApp.OVR, frame, layer)
+				*/
 			}
 		}
 
-		//layer :=
-		//		}
 		return nil
 	}
 }
@@ -736,14 +714,13 @@ func (r *Renderer) createProgram() error {
 	return nil
 }
 
-func (r *Renderer) Render(layer C.ovrLayerProjection2,
-	tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
+func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
 	//func (r *Renderer) Render() C.ovrLayerCube2 {
 	// Calculate model?
 
 	// Calculate layer headFlags???
 	// Calculate headpose???
-	//layer := C.vrapi_DefaultLayerProjection2()
+	layer := C.vrapi_DefaultLayerProjection2()
 	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
 	layer.HeadPose = tracking.HeadPose
 	//layer := C.vrapi_DefaultLayerCube2()
