@@ -86,6 +86,7 @@ import (
 	//"github.com/monzo/gomobile/app"
 
 	//gl "github.com/go-gl/gl/v3.1/gles2"
+
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/exp/app/debug"
 	"golang.org/x/mobile/exp/f32"
@@ -526,7 +527,7 @@ func (r *Renderer) createGeometry() {
 	}
 
 	r.Geometry = &Geometry{}
-	log.Println("Bind")
+	log.Println("Bind here!?!?!?")
 	r.Geometry.VertexArray = glctx.CreateVertexArray() // Problem statement
 	log.Println("Post create?")
 	glctx.BindVertexArray(r.Geometry.VertexArray)
@@ -779,8 +780,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 	// Unfortanetly its an all or nothing type thing.
 	// We need all of the statements to happen in order.
-	r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
+	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 	time.Sleep(time.Millisecond * 5)
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
@@ -805,7 +806,10 @@ func (r *Renderer) FramebufferCreate() *Framebuffer {
 
 	log.Println("Creating color texture swap chain")
 	f.ColorTextureSwapChain = C.vrapi_CreateTextureSwapChain3(
-		C.VRAPI_TEXTURE_TYPE_2D, C.GL_RGBA8, C.int(f.Width), C.int(f.Height), 1, 3)
+		C.VRAPI_TEXTURE_TYPE_2D, gl.RGBA8, C.int(f.Width), C.int(f.Height), 1, 3)
+	// TODO Undefined
+	// C.GL_RGBA8
+
 	if f.ColorTextureSwapChain == nil {
 		log.Printf("egl error %+v", eglError(int(C.eglGetError())))
 		panic("Cant get color texture swap chain")

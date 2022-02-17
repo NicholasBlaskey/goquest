@@ -5,6 +5,7 @@
     android:versionCode="1"
     android:versionName="1.0">
 
+
   <application android:label="Gorift" android:debuggable="true">
     <activity android:name="org.golang.app.GoNativeActivity"
               android:label="Gorift"
