@@ -198,38 +198,57 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		vrApp.GL, vrApp.Worker = initGL()
 		glctx = vrApp.GL
 
+		submitChan := make(chan int, 100)
+		var frame *C.ovrSubmitFrameDescription2
+		var layer C.ovrLayerProjection2
 		log.Println("After entering vr mode")
+
+		var r *Renderer
 		go func() {
 			// Init renderer
 			log.Println("Creating renderer")
-			r, err := rendererCreate(vrApp, vrApp.Java)
+			r, _ = rendererCreate(vrApp, vrApp.Java)
 			if err != nil {
 				panic("ERR")
 				//return err
 			}
 
+			/*
+				// Init renderer
+				log.Println("Creating renderer")
+				r, err := rendererCreate(vrApp, vrApp.Java)
+				if err != nil {
+					panic("ERR")
+					//return err
+				}
+			*/
+
 			log.Println("Calling render loop")
 			time.Sleep(1 * time.Second)
 			log.Println("Starting render loop")
 			for {
-				log.Println("Starting frame?\n\n")
+
+				/*
+					log.Println("Starting frame?\n\n")
+					time.Sleep(10 * time.Millisecond)
+					// Draw frame
+					vrApp.FrameIndex++
+					displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
+						C.longlong(vrApp.FrameIndex))
+					tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+					//log.Printf("tracking %+v\n", tracking)
+
+					layer = r.Render(tracking, float32(displayTime))
+					frame = &C.ovrSubmitFrameDescription2{}
+					frame.Flags = 0
+					frame.SwapInterval = 1
+					frame.FrameIndex = C.ulong(vrApp.FrameIndex)
+					frame.DisplayTime = displayTime
+					frame.LayerCount = 1
+				*/
 				time.Sleep(10 * time.Millisecond)
-				// Draw frame
-				vrApp.FrameIndex++
-				displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
-					C.longlong(vrApp.FrameIndex))
-				tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
-				log.Printf("tracking %+v\n", tracking)
 
-				layer := r.Render(tracking, float32(displayTime))
-				frame := &C.ovrSubmitFrameDescription2{}
-				frame.Flags = 0
-				frame.SwapInterval = 1
-				frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-				frame.DisplayTime = displayTime
-				frame.LayerCount = 1
-				C.submitFrame(vrApp.OVR, frame, layer)
-
+				submitChan <- 0
 				/*
 					log.Printf("display time %+v\n", displayTime)
 					log.Printf("layer%+v\n", layer)
@@ -245,15 +264,42 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			}
 		}()
 
+		runtime.LockOSThread()
 		workAvailable := vrApp.Worker.WorkAvailable()
 		for {
 			select {
 			case <-workAvailable:
-				log.Println("Got work")
-				log.Printf("%+v", workAvailable)
+				//log.Println("Got work")
+				//				log.Printf("%+v", workAvailable)
+				log.Println("Work")
 				vrApp.Worker.DoWork()
-				log.Println("Did work")
+				//log.Println("Did work")
 				// TODO add a case for submitting frame
+			case <-submitChan:
+				log.Println("Submit")
+				//log.Println(frame, layer)
+
+				time.Sleep(10 * time.Millisecond)
+				// Draw frame
+				vrApp.FrameIndex++
+				displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
+					C.longlong(vrApp.FrameIndex))
+				tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+				//log.Printf("tracking %+v\n", tracking)
+
+				l := C.vrapi_DefaultLayerProjection2()
+				go func() {
+					layer = r.Render(l, tracking, float32(displayTime))
+				}()
+
+				time.Sleep(10 * time.Millisecond)
+				frame = &C.ovrSubmitFrameDescription2{}
+				frame.Flags = 0
+				frame.SwapInterval = 1
+				frame.FrameIndex = C.ulong(vrApp.FrameIndex)
+				frame.DisplayTime = displayTime
+				frame.LayerCount = 1
+				C.submitFrame(vrApp.OVR, frame, layer)
 			}
 		}
 
@@ -690,13 +736,14 @@ func (r *Renderer) createProgram() error {
 	return nil
 }
 
-func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
+func (r *Renderer) Render(layer C.ovrLayerProjection2,
+	tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
 	//func (r *Renderer) Render() C.ovrLayerCube2 {
 	// Calculate model?
 
 	// Calculate layer headFlags???
 	// Calculate headpose???
-	layer := C.vrapi_DefaultLayerProjection2()
+	//layer := C.vrapi_DefaultLayerProjection2()
 	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
 	layer.HeadPose = tracking.HeadPose
 	//layer := C.vrapi_DefaultLayerCube2()
@@ -714,7 +761,9 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 	for i, f := range r.Framebuffers {
 		view := C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix)
 		projection := C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix)
-		log.Printf("view, proj %+v %+v\n", view, projection)
+		//log.Printf("view, proj %+v %+v\n", view, projection)
+		_ = view
+		_ = projection
 
 		// Attach framebuffer to texture???
 		layer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
@@ -762,7 +811,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 			log.Printf("projection glGetError %+v", C.glGetError())
 		*/
 
-		log.Printf("layer!!! %+v\n", layer)
+		//log.Printf("layer!!! %+v\n", layer)
 		//log.Println(r.Program.UniformLocations)
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
@@ -782,7 +831,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 	// We need all of the statements to happen in order.
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	time.Sleep(time.Millisecond * 5)
+	//time.Sleep(time.Millisecond * 5)
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
