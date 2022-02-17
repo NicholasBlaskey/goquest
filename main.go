@@ -247,13 +247,13 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		for {
 			select {
 			case <-workAvailable:
-				//log.Printf("(%d) Work id %+v mainthread%+v\n",
-				//	len(workAvailable), syscall.Gettid(), mainThreadID)
+				log.Printf("(%d) Work id %+v mainthread%+v\n",
+					len(workAvailable), syscall.Gettid(), mainThreadID)
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				//log.Printf("(%d) Submit id %+v mainthread%+v\n",
-				//	len(submitChan), syscall.Gettid(), mainThreadID)
-				//log.Printf("frame %+v", frame)
+				log.Printf("(%d) Submit id %+v mainthread%+v\n",
+					len(submitChan), syscall.Gettid(), mainThreadID)
+				log.Printf("frame %+v", frame)
 				C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
 
@@ -574,10 +574,10 @@ func (r *Renderer) createGeometry() {
 	*/
 
 	log.Println("attribs")
-	pos := gl.Attrib{0}
+	pos := gl.Attrib{Value: 0}
 	glctx.EnableVertexAttribArray(pos)
 	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*6, 0)
-	col := gl.Attrib{1}
+	col := gl.Attrib{Value: 1}
 	glctx.EnableVertexAttribArray(col)
 	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*6, 4*3)
 	/*
@@ -662,8 +662,8 @@ func (r *Renderer) createProgram() error {
 	r.Program = &Program{GLProgram: p}
 
 	// Attribs (do something better)
-	glctx.BindAttribLocation(p, gl.Attrib{0}, "aPosition")
-	glctx.BindAttribLocation(p, gl.Attrib{1}, "aColor")
+	glctx.BindAttribLocation(p, gl.Attrib{Value: 0}, "aPosition")
+	glctx.BindAttribLocation(p, gl.Attrib{Value: 1}, "aColor")
 	/*
 		// Attribs (do something better than constants)
 		pos := C.CString("aPosition")
