@@ -254,6 +254,15 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				log.Printf("(%d) Submit id %+v mainthread%+v\n",
 					len(submitChan), syscall.Gettid(), mainThreadID)
 				log.Printf("frame %+v", frame)
+
+				// Can we clear these???
+				for _, f := range r.Framebuffers {
+					for i := 0; i < f.SwapChainLength; i++ {
+						C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, C.uint(f.Framebuffers[i].Value))
+						C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
+					}
+				}
+
 				C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
 
@@ -716,7 +725,6 @@ func (r *Renderer) createProgram() error {
 
 func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
 	//func (r *Renderer) Render() C.ovrLayerCube2 {
-	// Calculate model?
 
 	// Calculate layer headFlags???
 	// Calculate headpose???
@@ -726,6 +734,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 	//layer := C.vrapi_DefaultLayerCube2()
 	//layer := C.vrapi_DefaultLayerSolidColorProjection2(&C.ovrVector4f{0.3, 0.5, 0.3, 1.0})
 
+	// Model
 	model := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
 	rot := C.ovrMatrix4f_CreateRotation(C.float(dt), C.float(dt), 0.0)
 	scaleAmount := C.float(float32(math.Sin(float64(dt))))
@@ -761,7 +770,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		// Why this int32 while viewport int???
 		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
 		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
-		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+		//glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		// TODO are we binding this right?
 		ident := []float32{ // TODO convert the mvp to floats
