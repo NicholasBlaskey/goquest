@@ -205,13 +205,13 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		var layer C.ovrLayerProjection2
 		log.Println("After entering vr mode")
 
-		var r *Renderer
+		r := rendererCreate(vrApp)
+
 		go func() {
 			// Init renderer
 			log.Println("Creating renderer")
-			r, _ = rendererCreate(vrApp, vrApp.Java)
-			if err != nil {
-				panic("ERR")
+			if err := r.rendererGLInit(); err != nil {
+				panic(err)
 				//return err
 			}
 
@@ -501,35 +501,6 @@ type Geometry struct {
 type Program struct {
 	GLProgram        gl.Program
 	UniformLocations map[string]gl.Uniform
-}
-
-func rendererCreate(vrApp *App, java *C.ovrJava) (*Renderer, error) {
-	r := &Renderer{VRApp: vrApp}
-	r.Width = int(C.vrapi_GetSystemPropertyInt(
-		java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH))
-	r.Height = int(C.vrapi_GetSystemPropertyInt(
-		java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT))
-	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
-
-	// Framebuffers
-	for i := 0; i < int(C.VRAPI_FRAME_LAYER_EYE_MAX); i++ {
-		log.Printf("Buffer create %d\n", i)
-		r.Framebuffers = append(r.Framebuffers, r.FramebufferCreate())
-	}
-
-	// Shaders
-	log.Println("Started creating shaders")
-	if err := r.createProgram(); err != nil {
-		return nil, err
-	}
-	log.Println("Finished creating shaders")
-
-	// Geometry
-	log.Println("Started creating geometry")
-	r.createGeometry()
-	log.Println("Finished creating geometry")
-
-	return r, nil
 }
 
 func toByteSlice(s []uint16) []byte {
@@ -833,27 +804,74 @@ type Framebuffer struct {
 	Width                 int
 	Height                int
 	ColorTextureSwapChain *C.ovrTextureSwapChain
+	ColorTexture          []uint32
 	Renderbuffers         []gl.Renderbuffer
 	Framebuffers          []gl.Framebuffer
 }
 
-func (r *Renderer) FramebufferCreate() *Framebuffer {
-	f := &Framebuffer{Width: r.Width, Height: r.Height}
-
-	log.Println("Creating color texture swap chain")
-	f.ColorTextureSwapChain = C.vrapi_CreateTextureSwapChain3(
-		C.VRAPI_TEXTURE_TYPE_2D, gl.RGBA8, C.int(f.Width), C.int(f.Height), 1, 3)
-	// TODO Undefined
-	// C.GL_RGBA8
-
-	if f.ColorTextureSwapChain == nil {
-		log.Printf("egl error %+v", eglError(int(C.eglGetError())))
-		panic("Cant get color texture swap chain")
+func (r *Renderer) rendererGLInit() error {
+	// Framebuffers
+	for i := 0; i < int(C.VRAPI_FRAME_LAYER_EYE_MAX); i++ {
+		r.FramebufferCreate(r.Framebuffers[i])
+		log.Printf("Buffer create %d\n", i)
+		//r.Framebuffers = append(r.Framebuffers, r.FramebufferCreate())
 	}
 
-	f.SwapChainLength = int(C.vrapi_GetTextureSwapChainLength(f.ColorTextureSwapChain))
-	log.Printf("Length of SwapChain %d\n", f.SwapChainLength)
+	// Shaders
+	log.Println("Started creating shaders")
+	if err := r.createProgram(); err != nil {
+		return err
+	}
+	log.Println("Finished creating shaders")
 
+	// Geometry
+	log.Println("Started creating geometry")
+	r.createGeometry()
+	log.Println("Finished creating geometry")
+
+	return nil
+}
+
+func rendererCreate(vrApp *App) *Renderer {
+	r := &Renderer{VRApp: vrApp}
+	r.Width = int(C.vrapi_GetSystemPropertyInt(
+		vrApp.Java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH))
+	r.Height = int(C.vrapi_GetSystemPropertyInt(
+		vrApp.Java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT))
+	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
+
+	// Create swapchain for each framebuffer
+	for i := 0; i < C.VRAPI_FRAME_LAYER_EYE_MAX; i++ {
+		f := &Framebuffer{Width: r.Width, Height: r.Height}
+
+		log.Println("Creating color texture swap chain")
+		f.ColorTextureSwapChain = C.vrapi_CreateTextureSwapChain3(
+			C.VRAPI_TEXTURE_TYPE_2D, gl.RGBA8, C.int(f.Width), C.int(f.Height), 1, 3)
+		// TODO Undefined
+		// C.GL_RGBA8
+
+		if f.ColorTextureSwapChain == nil {
+			log.Printf("egl error %+v", eglError(int(C.eglGetError())))
+			panic("Cant get color texture swap chain")
+		}
+
+		f.SwapChainLength = int(C.vrapi_GetTextureSwapChainLength(f.ColorTextureSwapChain))
+		log.Printf("Length of SwapChain %d\n", f.SwapChainLength)
+
+		log.Println(f.SwapChainLength)
+		for i := 0; i < f.SwapChainLength; i++ {
+			colorTextureC := C.vrapi_GetTextureSwapChainHandle(
+				f.ColorTextureSwapChain, C.int(i))
+			log.Println("COLOR TEXTURE C", colorTextureC, f.ColorTextureSwapChain)
+			f.ColorTexture = append(f.ColorTexture, uint32(colorTextureC))
+		}
+
+		r.Framebuffers = append(r.Framebuffers, f)
+	}
+	return r
+}
+
+func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 	// Create depth renderbuffers and framebuffers
 	for i := 0; i < f.SwapChainLength; i++ {
 		log.Printf("renderbuffs%+v ctx%+v", glctx, glctx)
@@ -874,9 +892,10 @@ func (r *Renderer) FramebufferCreate() *Framebuffer {
 
 	log.Println(f.SwapChainLength)
 	for i := 0; i < f.SwapChainLength; i++ {
-		colorTextureC := C.vrapi_GetTextureSwapChainHandle(
-			f.ColorTextureSwapChain, C.int(i))
-		colorTexture := gl.Texture{uint32(colorTextureC)}
+		//colorTextureC := C.vrapi_GetTextureSwapChainHandle(
+		//	f.ColorTextureSwapChain, C.int(i))
+		//log.Println("COLOR TEXTURE C", colorTextureC, f.ColorTextureSwapChain)
+		colorTexture := gl.Texture{uint32(f.ColorTexture[i])}
 
 		glctx.BindTexture(gl.TEXTURE_2D, colorTexture)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
