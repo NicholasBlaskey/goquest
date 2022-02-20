@@ -206,7 +206,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		log.Println("After entering vr mode")
 
 		r := rendererCreate(vrApp)
-
 		go func() {
 			// Init renderer
 			log.Println("Creating renderer")
@@ -214,6 +213,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				panic(err)
 				//return err
 			}
+			//panic("Post create")
 
 			log.Println("Calling render loop")
 			time.Sleep(1 * time.Second)
@@ -247,13 +247,13 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		for {
 			select {
 			case <-workAvailable:
-				log.Printf("(%d) Work id %+v mainthread%+v\n",
-					len(workAvailable), syscall.Gettid(), mainThreadID)
+				//log.Printf("(%d) Work id %+v mainthread%+v\n",
+				//	len(workAvailable), syscall.Gettid(), mainThreadID)
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				log.Printf("(%d) Submit id %+v mainthread%+v\n",
-					len(submitChan), syscall.Gettid(), mainThreadID)
-				log.Printf("frame %+v", frame)
+				//log.Printf("(%d) Submit id %+v mainthread%+v\n",
+				//	len(submitChan), syscall.Gettid(), mainThreadID)
+				//				log.Printf("frame %+v", frame)
 
 				// Can we clear these???
 				for _, f := range r.Framebuffers {
@@ -694,6 +694,15 @@ func (r *Renderer) createProgram() error {
 	return nil
 }
 
+func convertToFloat32(m C.ovrMatrix4f) []float32 {
+	res := make([]float32, 16)
+	for i := 0; i < 16; i++ {
+		p := unsafe.Pointer(&m)
+		res[i] = *(*float32)(unsafe.Add(p, uintptr(i)*4))
+	}
+	return res
+}
+
 func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
 	//func (r *Renderer) Render() C.ovrLayerCube2 {
 
@@ -706,21 +715,18 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 	//layer := C.vrapi_DefaultLayerSolidColorProjection2(&C.ovrVector4f{0.3, 0.5, 0.3, 1.0})
 
 	// Model
-	model := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
+	modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
 	rot := C.ovrMatrix4f_CreateRotation(C.float(dt), C.float(dt), 0.0)
 	scaleAmount := C.float(float32(math.Sin(float64(dt))))
 	scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
-	model = C.ovrMatrix4f_Multiply(&model, &rot)
-	model = C.ovrMatrix4f_Multiply(&model, &scale)
-	model = C.ovrMatrix4f_Transpose(&model)
+	modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+	modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+	model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
-		view := C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix)
-		projection := C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix)
-		//log.Printf("view, proj %+v %+v\n", view, projection)
-		_ = view
-		_ = projection
+		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
+		projection := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix))
 
 		// Attach framebuffer to texture???
 		layer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
@@ -730,6 +736,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Bind framebuffer
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
+		log.Printf("Binding framebuffer %d %+v\n", i, f)
 
 		// Enable gl stuff
 		glctx.Enable(gl.CULL_FACE)
@@ -740,21 +747,25 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.Viewport(0, 0, f.Width, f.Height)
 		// Why this int32 while viewport int???
 		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
-		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
 
-		//glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-
-		// TODO are we binding this right?
-		ident := []float32{ // TODO convert the mvp to floats
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			0.0, 0.0, 0.0, 1.0,
+		// Why do we get two blue screens instead of one blue and one grey?
+		if i == 0 {
+			log.Println("I at", i)
+			glctx.ClearColor(0.15, 0.15, 0.3, 1.0)
+		} else {
+			log.Println("I at", i)
+			glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
 		}
+		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+		log.Println("model", model)
+		log.Println("view", view)
+		log.Println("projection", projection)
+
 		glctx.UseProgram(r.Program.GLProgram)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], ident)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], ident)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], ident)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 		/*
 			C.glUniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], 1, C.GL_FALSE,
 				(*C.GLfloat)(unsafe.Pointer(&model)))
@@ -777,23 +788,13 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
-		glctx.UseProgram(gl.Program{Value: 0})
+		//glctx.UseProgram(gl.Program{Value: 0})
 		glctx.Flush()
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
-		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+		//glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
 	}
-
-	// Unfortanetly its an all or nothing type thing.
-	// We need all of the statements to happen in order.
-	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	//time.Sleep(time.Millisecond * 5)
-	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
-	//r.VRApp.Worker.DoWork() // TODO move this somewhere else?
 
 	return layer
 }
