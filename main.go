@@ -758,7 +758,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
+		//f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
 	}
 
 	return layer
