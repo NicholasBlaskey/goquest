@@ -232,8 +232,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				frame.DisplayTime = displayTime
 				frame.LayerCount = 1
 
-				//time.Sleep(10 * time.Millisecond)
-				log.Printf("Submitting frame %+v", syscall.Gettid())
 				submitChan <- 0
 			}
 		}()
@@ -244,25 +242,8 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		for {
 			select {
 			case <-workAvailable:
-				//log.Printf("(%d) Work id %+v mainthread%+v\n",
-				//	len(workAvailable), syscall.Gettid(), mainThreadID)
-				//time.Sleep(5 * time.Millisecond)
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				//log.Printf("(%d) Submit id %+v mainthread%+v\n",
-				//	len(submitChan), syscall.Gettid(), mainThreadID)
-				//				log.Printf("frame %+v", frame)
-
-				/*
-					// Can we clear these???
-					for _, f := range r.Framebuffers {
-						for i := 0; i < f.SwapChainLength; i++ {
-							C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, C.uint(f.Framebuffers[i].Value))
-							C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
-						}
-					}
-				*/
-
 				C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
 			}
@@ -512,22 +493,12 @@ func (r *Renderer) createGeometry() {
 	log.Println("Post create?")
 	glctx.BindVertexArray(r.Geometry.VertexArray)
 	log.Println("Post bind?")
-	/*
-		C.glGenVertexArrays(1, &r.Geometry.VertexArray)
-		C.glBindVertexArray(r.Geometry.VertexArray)
-	*/
 
 	log.Println("VertexBuffer")
 	r.Geometry.VertexBuffer = glctx.CreateBuffer()
 	glctx.BindBuffer(gl.ARRAY_BUFFER, r.Geometry.VertexBuffer)
 	glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
 		gl.STATIC_DRAW)
-	/*
-		C.glGenBuffers(1, &r.Geometry.VertexBuffer)
-		C.glBindBuffer(C.GL_ARRAY_BUFFER, r.Geometry.VertexBuffer)
-		C.glBufferData(C.GL_ARRAY_BUFFER, C.long(len(vertices)*4),
-			unsafe.Pointer(&vertices[0]), C.GL_STATIC_DRAW)
-	*/
 
 	log.Println("attribs")
 	pos := gl.Attrib{Value: 0}
@@ -536,51 +507,12 @@ func (r *Renderer) createGeometry() {
 	col := gl.Attrib{Value: 1}
 	glctx.EnableVertexAttribArray(col)
 	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*6, 4*3)
-	/*
-		C.glEnableVertexAttribArray(0)
-		C.glVertexAttribPointer(0, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(0)))
-		C.glEnableVertexAttribArray(1)
-		C.glVertexAttribPointer(1, 3, C.GL_FLOAT, 0, 4*6, unsafe.Pointer(uintptr(4*3)))
-	*/
 
 	log.Println("indexBuffer")
 	r.Geometry.IndexBuffer = glctx.CreateBuffer()
 	glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
 	glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices), gl.STATIC_DRAW)
-	/*
-		C.glGenBuffers(1, &r.Geometry.IndexBuffer)
-		C.glBindBuffer(C.GL_ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
-		C.glBufferData(C.GL_ELEMENT_ARRAY_BUFFER, C.long(len(indices)*2),
-			unsafe.Pointer(&indices[0]), C.GL_STATIC_DRAW)
-		C.glBindVertexArray(0)
-	*/
 }
-
-/*
-func compileShader(shaderType C.GLenum, source string) (C.uint, error) {
-	shader := C.glCreateShader(shaderType)
-	sourceCString := C.CString(source)
-	defer C.free(unsafe.Pointer(sourceCString))
-	C.glShaderSource(shader, 1, &sourceCString, nil)
-	C.glCompileShader(shader)
-
-	var status C.GLint
-	C.glGetShaderiv(shader, C.GL_COMPILE_STATUS, &status)
-	if status == C.GL_FALSE { // TODO find why this wont error?
-		var length C.GLint
-		C.glGetShaderiv(shader, C.GL_INFO_LOG_LENGTH, &length)
-
-		errorMsg := (*C.char)(C.CBytes(make([]byte, length)))
-		defer C.free(unsafe.Pointer(errorMsg))
-		C.glGetShaderInfoLog(shader, length, nil, errorMsg)
-		s := C.GoStringN(errorMsg, length)
-
-		return shader, fmt.Errorf("cant compile shader with error of length %d %s\n%s",
-			length, s, source)
-	}
-	return shader, nil
-}
-*/
 
 const vertexShader = `
 #version 300 es
@@ -620,53 +552,12 @@ func (r *Renderer) createProgram() error {
 	// Attribs (do something better)
 	glctx.BindAttribLocation(p, gl.Attrib{Value: 0}, "aPosition")
 	glctx.BindAttribLocation(p, gl.Attrib{Value: 1}, "aColor")
-	/*
-		// Attribs (do something better than constants)
-		pos := C.CString("aPosition")
-		defer C.free(unsafe.Pointer(pos))
-		col := C.CString("aColor")
-		defer C.free(unsafe.Pointer(col))
-		C.glBindAttribLocation(r.Program.GLProgram, 0, pos)
-		C.glBindAttribLocation(r.Program.GLProgram, 1, col)
-	*/
 
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
 	for _, name := range []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix"} {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
-
-	/*
-		r.Program = &Program{GLProgram: C.glCreateProgram()}
-		vs, err := compileShader(C.GL_VERTEX_SHADER, vertexShader)
-		if err != nil {
-			return err
-		}
-		fs, err := compileShader(C.GL_FRAGMENT_SHADER, fragmentShader)
-		if err != nil {
-			return err
-		}
-
-		C.glAttachShader(r.Program.GLProgram, vs)
-		C.glAttachShader(r.Program.GLProgram, fs)
-
-
-		C.glLinkProgram(r.Program.GLProgram)
-		var status C.GLint
-		C.glGetProgramiv(r.Program.GLProgram, C.GL_LINK_STATUS, &status)
-		if status == C.GL_FALSE {
-			var length C.GLint
-			C.glGetProgramiv(r.Program.GLProgram, C.GL_INFO_LOG_LENGTH, &length)
-
-			errorMsg := (*C.char)(C.CBytes(make([]byte, length)))
-			defer C.free(unsafe.Pointer(errorMsg))
-			C.glGetProgramInfoLog(r.Program.GLProgram, length, nil, errorMsg)
-			s := C.GoStringN(errorMsg, length)
-
-			return fmt.Errorf("cant link program with error of length %d\n%s", length, s)
-		}
-	*/
-
 	return nil
 }
 
@@ -707,7 +598,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Bind framebuffer
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
-		log.Printf("Binding framebuffer %d %+v\n", i, f)
 
 		// Enable gl stuff
 		glctx.Enable(gl.CULL_FACE)
@@ -722,10 +612,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		log.Println("model", model)
-		log.Println("view", view)
-		log.Println("projection", projection)
-
 		glctx.UseProgram(r.Program.GLProgram)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
@@ -733,8 +619,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
-
-		log.Println("Currently bound fb", glctx.GetInteger(gl.DRAW_FRAMEBUFFER_BINDING))
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
@@ -829,17 +713,6 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 		f.Renderbuffers = append(f.Renderbuffers, glctx.CreateRenderbuffer())
 		f.Framebuffers = append(f.Framebuffers, glctx.CreateFramebuffer())
 	}
-	/*
-		// Allocate depth render buffers + framebuffers
-		f.RenderBuffers = make([]C.GLuint, f.SwapChainLength)
-		f.Framebuffers = make([]C.GLuint, f.SwapChainLength)
-
-		// Generate frame + render buffers
-		C.glGenRenderbuffers(C.int(f.SwapChainLength), &f.RenderBuffers[0])
-		C.glGenFramebuffers(C.int(f.SwapChainLength), &f.Framebuffers[0])
-		log.Printf("Generated framebuffers %+v generated render buffers %+v\n",
-			f.Framebuffers, f.RenderBuffers)
-	*/
 
 	log.Println(f.SwapChainLength)
 	for i := 0; i < f.SwapChainLength; i++ {
