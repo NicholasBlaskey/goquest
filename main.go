@@ -247,31 +247,21 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				//log.Printf("(%d) Work id %+v mainthread%+v\n",
 				//	len(workAvailable), syscall.Gettid(), mainThreadID)
 				//time.Sleep(5 * time.Millisecond)
-				log.Println("DOING WORK", vrApp.FrameIndex)
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				log.Println("Submitting", vrApp.FrameIndex)
-				/*
-					for _, f := range r.Framebuffers {
-						for i := 0; i < 3; i++ {
-							colorTextureC := C.vrapi_GetTextureSwapChainHandle(
-								f.ColorTextureSwapChain, C.int(i))
-							log.Println("ColorTextureC inside submitChan", colorTextureC)
-						}
-					}
-				*/
-
 				//log.Printf("(%d) Submit id %+v mainthread%+v\n",
 				//	len(submitChan), syscall.Gettid(), mainThreadID)
 				//				log.Printf("frame %+v", frame)
 
-				// Can we clear these???
-				for _, f := range r.Framebuffers {
-					for i := 0; i < f.SwapChainLength; i++ {
-						C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, C.uint(f.Framebuffers[i].Value))
-						C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
+				/*
+					// Can we clear these???
+					for _, f := range r.Framebuffers {
+						for i := 0; i < f.SwapChainLength; i++ {
+							C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, C.uint(f.Framebuffers[i].Value))
+							C.glClear(C.GL_COLOR_BUFFER_BIT | C.GL_DEPTH_BUFFER_BIT)
+						}
 					}
-				}
+				*/
 
 				C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
@@ -729,14 +719,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		// Why this int32 while viewport int???
 		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
 
-		// Why do we get two blue screens instead of one blue and one grey?
-		if i == 0 {
-			log.Println("I at", i)
-			glctx.ClearColor(0.15, 0.15, 0.3, 1.0)
-		} else {
-			log.Println("I at", i)
-			glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
-		}
+		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		log.Println("model", model)
@@ -751,6 +734,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
 
+		log.Println("Currently bound fb", glctx.GetInteger(gl.DRAW_FRAMEBUFFER_BINDING))
+
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
 		//glctx.UseProgram(gl.Program{Value: 0})
@@ -758,7 +743,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		//f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
+		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
 	}
 
 	return layer
@@ -798,6 +783,8 @@ func (r *Renderer) rendererGLInit() error {
 	return nil
 }
 
+// This needs to run on the mainthread, for
+// vrapi_GetTextureSwapChain stuff
 func rendererCreate(vrApp *App) *Renderer {
 	r := &Renderer{VRApp: vrApp}
 	r.Width = int(C.vrapi_GetSystemPropertyInt(
@@ -813,8 +800,6 @@ func rendererCreate(vrApp *App) *Renderer {
 		log.Println("Creating color texture swap chain")
 		f.ColorTextureSwapChain = C.vrapi_CreateTextureSwapChain3(
 			C.VRAPI_TEXTURE_TYPE_2D, gl.RGBA8, C.int(f.Width), C.int(f.Height), 1, 3)
-		// TODO Undefined
-		// C.GL_RGBA8
 
 		if f.ColorTextureSwapChain == nil {
 			log.Printf("egl error %+v", eglError(int(C.eglGetError())))
@@ -858,16 +843,13 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 
 	log.Println(f.SwapChainLength)
 	for i := 0; i < f.SwapChainLength; i++ {
-		//colorTextureC := C.vrapi_GetTextureSwapChainHandle(
-		//	f.ColorTextureSwapChain, C.int(i))
-		//log.Println("COLOR TEXTURE C", colorTextureC, f.ColorTextureSwapChain)
 		colorTexture := gl.Texture{uint32(f.ColorTexture[i])}
-
 		glctx.BindTexture(gl.TEXTURE_2D, colorTexture)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+		glctx.BindTexture(gl.TEXTURE_2D, gl.Texture{})
 
 		glctx.BindRenderbuffer(gl.RENDERBUFFER, f.Renderbuffers[i])
 		glctx.RenderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, f.Width, f.Height)
