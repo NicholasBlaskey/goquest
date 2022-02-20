@@ -183,8 +183,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 
 		mainThreadID := syscall.Gettid()
 
-		//End
-
 		// Init egl
 		var err error
 		log.Println("Initializing egl")
@@ -213,13 +211,12 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				panic(err)
 				//return err
 			}
-			//panic("Post create")
 
 			log.Println("Calling render loop")
 			time.Sleep(1 * time.Second)
 			log.Println("Starting render loop")
 			for {
-				time.Sleep(10 * time.Millisecond)
+				//time.Sleep(10 * time.Millisecond)
 				// Draw frame
 				vrApp.FrameIndex++
 				displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
@@ -235,7 +232,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				frame.DisplayTime = displayTime
 				frame.LayerCount = 1
 
-				time.Sleep(10 * time.Millisecond)
+				//time.Sleep(10 * time.Millisecond)
 				log.Printf("Submitting frame %+v", syscall.Gettid())
 				submitChan <- 0
 			}
@@ -249,8 +246,21 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			case <-workAvailable:
 				//log.Printf("(%d) Work id %+v mainthread%+v\n",
 				//	len(workAvailable), syscall.Gettid(), mainThreadID)
+				//time.Sleep(5 * time.Millisecond)
+				log.Println("DOING WORK", vrApp.FrameIndex)
 				vrApp.Worker.DoWork()
 			case <-submitChan:
+				log.Println("Submitting", vrApp.FrameIndex)
+				/*
+					for _, f := range r.Framebuffers {
+						for i := 0; i < 3; i++ {
+							colorTextureC := C.vrapi_GetTextureSwapChainHandle(
+								f.ColorTextureSwapChain, C.int(i))
+							log.Println("ColorTextureC inside submitChan", colorTextureC)
+						}
+					}
+				*/
+
 				//log.Printf("(%d) Submit id %+v mainthread%+v\n",
 				//	len(submitChan), syscall.Gettid(), mainThreadID)
 				//				log.Printf("frame %+v", frame)
@@ -265,30 +275,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 
 				C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
-
-				/*
-					log.Printf("Submit id %+v\n", syscall.Gettid())
-
-					vrApp.FrameIndex++
-					displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
-						C.longlong(vrApp.FrameIndex))
-					tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
-					//log.Printf("tracking %+v\n", tracking)
-
-					l := C.vrapi_DefaultLayerProjection2()
-					go func() {
-						layer = r.Render(l, tracking, float32(displayTime))
-					}()
-
-					time.Sleep(10 * time.Millisecond)
-					frame = &C.ovrSubmitFrameDescription2{}
-					frame.Flags = 0
-					frame.SwapInterval = 1
-					frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-					frame.DisplayTime = displayTime
-					frame.LayerCount = 1
-					C.submitFrame(vrApp.OVR, frame, layer)
-				*/
 			}
 		}
 
@@ -704,15 +690,10 @@ func convertToFloat32(m C.ovrMatrix4f) []float32 {
 }
 
 func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
-	//func (r *Renderer) Render() C.ovrLayerCube2 {
-
-	// Calculate layer headFlags???
-	// Calculate headpose???
+	// Create layer and tracking
 	layer := C.vrapi_DefaultLayerProjection2()
 	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
 	layer.HeadPose = tracking.HeadPose
-	//layer := C.vrapi_DefaultLayerCube2()
-	//layer := C.vrapi_DefaultLayerSolidColorProjection2(&C.ovrVector4f{0.3, 0.5, 0.3, 1.0})
 
 	// Model
 	modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
@@ -766,22 +747,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
-		/*
-			C.glUniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], 1, C.GL_FALSE,
-				(*C.GLfloat)(unsafe.Pointer(&model)))
-			log.Printf("model glGetError %+v", C.glGetError())
-
-			C.glUniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], 1, C.GL_FALSE,
-				(*C.GLfloat)(unsafe.Pointer(&view)))
-			log.Printf("view glGetError %+v", C.glGetError())
-
-			C.glUniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], 1, C.GL_FALSE,
-				(*C.GLfloat)(unsafe.Pointer(&projection)))
-			log.Printf("projection glGetError %+v", C.glGetError())
-		*/
-
-		//log.Printf("layer!!! %+v\n", layer)
-		//log.Println(r.Program.UniformLocations)
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
@@ -791,7 +756,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		//glctx.UseProgram(gl.Program{Value: 0})
 		glctx.Flush()
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
-		//glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
 	}
@@ -903,26 +868,10 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-		/*
-			log.Printf("Creating color texture i=%d colorTexture=%d", i, colorTexture)
-			C.glBindTexture(C.GL_TEXTURE_2D, colorTexture)
-			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MIN_FILTER, C.GL_LINEAR)
-			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_MAG_FILTER, C.GL_LINEAR)
-			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_S, C.GL_CLAMP_TO_EDGE)
-			C.glTexParameteri(C.GL_TEXTURE_2D, C.GL_TEXTURE_WRAP_T, C.GL_CLAMP_TO_EDGE)
-			C.glBindTexture(C.GL_TEXTURE_2D, 0)
-		*/
 
 		glctx.BindRenderbuffer(gl.RENDERBUFFER, f.Renderbuffers[i])
 		glctx.RenderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, f.Width, f.Height)
 		glctx.BindRenderbuffer(gl.RENDERBUFFER, gl.Renderbuffer{})
-		/*
-			log.Printf("Creating depth renderbuffer %d", i)
-			C.glBindRenderbuffer(C.GL_RENDERBUFFER, f.RenderBuffers[i])
-			C.glRenderbufferStorage(C.GL_RENDERBUFFER, C.GL_DEPTH_COMPONENT24,
-				C.int(f.Width), C.int(f.Height))
-			C.glBindRenderbuffer(C.GL_RENDERBUFFER, 0)
-		*/
 
 		log.Printf("Creating framebuffer %d", i)
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[i])
@@ -934,17 +883,6 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 		if status != gl.FRAMEBUFFER_COMPLETE {
 			panic("Can't create framebuffer")
 		}
-		/*
-			C.glBindFramebuffer(C.GL_DRAW_FRAMEBUFFER, f.Framebuffers[i])
-			C.glFramebufferTexture2D(C.GL_DRAW_FRAMEBUFFER, C.GL_COLOR_ATTACHMENT0,
-				C.GL_TEXTURE_2D, colorTexture, 0)
-			C.glFramebufferRenderbuffer(C.GL_DRAW_FRAMEBUFFER, C.GL_DEPTH_ATTACHMENT,
-				C.GL_RENDERBUFFER, f.RenderBuffers[i])
-			status := C.glCheckFramebufferStatus(C.GL_DRAW_FRAMEBUFFER)
-			if status != C.GL_FRAMEBUFFER_COMPLETE {
-				panic("Can't create framebuffer")
-			}
-		*/
 	}
 
 	log.Println("Finished creating framebuffer")
