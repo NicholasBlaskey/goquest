@@ -72,7 +72,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"math"
 	"reflect"
 	"runtime"
 	"syscall"
@@ -468,24 +467,28 @@ func toByteSlice(s []uint16) []byte {
 }
 
 func (r *Renderer) createGeometry() {
-	vertices := []float32{
-		-1.0, +1.0, -1.0, 1.0, 0.0, 1.0,
-		+1.0, +1.0, -1.0, 0.0, 1.0, 0.0,
-		+1.0, +1.0, +1.0, 0.0, 0.0, 1.0,
-		-1.0, +1.0, +1.0, 1.0, 0.0, 0.0,
-		-1.0, -1.0, -1.0, 0.0, 0.0, 1.0,
-		-1.0, -1.0, +1.0, 0.0, 1.0, 0.0,
-		+1.0, -1.0, +1.0, 1.0, 0.0, 1.0,
-		+1.0, -1.0, -1.0, 1.0, 0.0, 0.0,
-	}
-	indices := []uint16{
-		0, 2, 1, 2, 0, 3,
-		4, 6, 5, 6, 4, 7,
-		2, 6, 7, 7, 1, 2,
-		0, 4, 5, 5, 3, 0,
-		3, 5, 6, 6, 2, 3,
-		0, 1, 7, 7, 4, 0,
-	}
+	/*
+		vertices := []float32{
+			-1.0, +1.0, -1.0, 1.0, 0.0, 1.0,
+			+1.0, +1.0, -1.0, 0.0, 1.0, 0.0,
+			+1.0, +1.0, +1.0, 0.0, 0.0, 1.0,
+			-1.0, +1.0, +1.0, 1.0, 0.0, 0.0,
+			-1.0, -1.0, -1.0, 0.0, 0.0, 1.0,
+			-1.0, -1.0, +1.0, 0.0, 1.0, 0.0,
+			+1.0, -1.0, +1.0, 1.0, 0.0, 1.0,
+			+1.0, -1.0, -1.0, 1.0, 0.0, 0.0,
+		}
+		indices := []uint16{
+			0, 2, 1, 2, 0, 3,
+			4, 6, 5, 6, 4, 7,
+			2, 6, 7, 7, 1, 2,
+			0, 4, 5, 5, 3, 0,
+			3, 5, 6, 6, 2, 3,
+			0, 1, 7, 7, 4, 0,
+		}
+	*/
+	vertices := heartVerts
+	indices := heartIndices
 
 	r.Geometry = &Geometry{}
 	log.Println("Bind here!?!?!?")
@@ -579,7 +582,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 	// Model
 	modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
 	rot := C.ovrMatrix4f_CreateRotation(C.float(dt), C.float(dt), 0.0)
-	scaleAmount := C.float(float32(math.Sin(float64(dt))))
+	scaleAmount := C.float(0.05)
 	scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
 	modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 	modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
@@ -618,7 +621,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
-		glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
+		//glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
+		glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
