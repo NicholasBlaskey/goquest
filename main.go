@@ -488,7 +488,7 @@ func (r *Renderer) createGeometry() {
 		}
 	*/
 	vertices := heartVerts
-	indices := heartIndices
+	//indices := heartIndices
 
 	r.Geometry = &Geometry{}
 	log.Println("Bind here!?!?!?")
@@ -506,15 +506,20 @@ func (r *Renderer) createGeometry() {
 	log.Println("attribs")
 	pos := gl.Attrib{Value: 0}
 	glctx.EnableVertexAttribArray(pos)
-	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*6, 0)
+	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
 	col := gl.Attrib{Value: 1}
 	glctx.EnableVertexAttribArray(col)
-	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*6, 4*3)
+	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
+	norm := gl.Attrib{Value: 2}
+	glctx.EnableVertexAttribArray(norm)
+	glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
 
-	log.Println("indexBuffer")
-	r.Geometry.IndexBuffer = glctx.CreateBuffer()
-	glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
-	glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices), gl.STATIC_DRAW)
+	/*
+		log.Println("indexBuffer")
+		r.Geometry.IndexBuffer = glctx.CreateBuffer()
+		glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
+		glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices), gl.STATIC_DRAW)
+	*/
 }
 
 const vertexShader = `
@@ -522,14 +527,17 @@ const vertexShader = `
 
 in vec3 aPosition;
 in vec3 aColor;
+in vec3 aNormal;
 uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
 
 out vec3 vColor;
+out vec3 vNormal;
 void main() {
 	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition * 0.1, 1.0)));
 	vColor = aColor;
+	vNormal = vNormal;
 }
 `
 
@@ -537,9 +545,10 @@ const fragmentShader = `
 #version 300 es
 
 in lowp vec3 vColor;
+in lowp vec3 vNormal;
 out lowp vec4 outColor;
 void main() {
-	outColor = vec4(vColor, 1.0);
+	outColor = vec4(vColor * 0.1 + (vNormal + 1.0) / 2.0, 1.0);
 	//outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
 `
@@ -555,6 +564,7 @@ func (r *Renderer) createProgram() error {
 	// Attribs (do something better)
 	glctx.BindAttribLocation(p, gl.Attrib{Value: 0}, "aPosition")
 	glctx.BindAttribLocation(p, gl.Attrib{Value: 1}, "aColor")
+	glctx.BindAttribLocation(p, gl.Attrib{Value: 2}, "aNormal")
 
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
@@ -621,8 +631,9 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
-		//glctx.DrawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0)
-		glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
+		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
+
+		//glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
