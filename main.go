@@ -537,7 +537,7 @@ out vec3 vNormal;
 void main() {
 	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition * 0.1, 1.0)));
 	vColor = aColor;
-	vNormal = vNormal;
+	vNormal = aNormal;
 }
 `
 
@@ -548,7 +548,7 @@ in lowp vec3 vColor;
 in lowp vec3 vNormal;
 out lowp vec4 outColor;
 void main() {
-	outColor = vec4(vColor * 0.1 + (vNormal + 1.0) / 2.0, 1.0);
+	outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
 	//outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
 `
