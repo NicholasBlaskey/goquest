@@ -72,6 +72,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"reflect"
 	"runtime"
 	"syscall"
@@ -589,15 +590,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
 	layer.HeadPose = tracking.HeadPose
 
-	// Model
-	modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
-	rot := C.ovrMatrix4f_CreateRotation(C.float(dt), C.float(dt), 0.0)
-	scaleAmount := C.float(0.05)
-	scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
-	modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-	modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-	model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
 		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
@@ -626,13 +618,35 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		glctx.UseProgram(r.Program.GLProgram)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 
-		glctx.BindVertexArray(r.Geometry.VertexArray)
-		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
+		for z := -15.0; z < 0.0; z++ {
+			if z == 0 {
+				continue
+			}
+			for i := float64(0); i < math.Pi*2; i += math.Pi / 4.0 {
+				x, y := math.Cos(i)*(1.0/(z/2.0)), math.Sin(i)*(1.0/(z/2.0))
 
+				// Model
+				modelC := C.ovrMatrix4f_CreateTranslation(C.float(x), C.float(y), C.float(z))
+				rot := C.ovrMatrix4f_CreateRotation(0.0, 0.0, 0.0)
+				if int(z)%2 == 0 {
+					rot = C.ovrMatrix4f_CreateRotation(0.0, math.Pi, 0.0)
+				}
+
+				scaleAmount := C.float(0.05)
+				scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
+				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+				model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
+
+				glctx.BindVertexArray(r.Geometry.VertexArray)
+				glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
+			}
+		}
 		//glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
 
 		// Cleanup
