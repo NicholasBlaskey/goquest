@@ -524,6 +524,47 @@ func (r *Renderer) createGeometry() {
 
 const vertexShader = `
 #version 300 es
+in vec3 aPosition;
+in vec3 aColor;
+in vec3 aNormal;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uNormalMatrix;
+out vec3 vColor;
+out vec3 vNormal;
+out vec3 vFragPos;
+void main() {
+	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition, 1.0)));
+	vColor = aColor;
+	vNormal = vec3(uNormalMatrix * vec4(aNormal, 1.0));
+	vFragPos = vec3(uModelMatrix * vec4(aPosition, 1.0));
+}
+`
+
+const fragmentShader = `
+#version 300 es
+in lowp vec3 vColor;
+in lowp vec3 vNormal;
+in lowp vec3 vFragPos;
+out lowp vec4 outColor;
+void main() {
+	vec3 ambient = vec3(0.3, 0.3, 0.3);
+	vec3 lightPos = vec3(0.0, 0.0, 0.0);
+    vec3 lightColor = vec3(1.0, 1.0, 1.0);
+	
+	vec3 normalized = normalize(vNormal);
+	vec3 lightDir = normalize(lightPos - vFragPos);
+	float nDotL = max(dot(lightDir, normalized), 0.0);
+	vec3 diffuse = lightColor * vColor * nDotL;
+
+	outColor = vec4(diffuse + ambient, 1.0);
+}
+`
+
+/*
+const vertexShader = `
+#version 300 es
 
 in vec3 aPosition;
 in vec3 aColor;
@@ -551,23 +592,29 @@ const fragmentShader = `
 in lowp vec3 vColor;
 in lowp vec3 vNormal;
 in lowp vec3 vFragPos;
+
 out lowp vec4 outColor;
 void main() {
+	outColor = vec4(1.0, 1.0, 1.0, 1.0);
+
 	//vec3 ambient = vec3(0.5, 0.5, 0.5);
 	vec3 ambient = vec3(0.2, 0.2, 0.2);
 	vec3 lightPos = vec3(0.0, 1.0, 0.0);
     vec3 lightColor = vec3(1.0, 1.0, 1.0);
 
-	vec3 normalized = normalize(vNormal);	
+	vec3 normalized = normalize(vNormal);
 
 	vec3 lightDir = normalize(lightPos - vFragPos);
 	float nDotL = max(dot(lightDir, normalized), 0.0);
-	vec3 diffuse = lightColor * vColor * nDotL;	
+	vec3 diffuse = lightColor * vColor * nDotL;
 
-	outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
-	//outColor = vec4(ambient + diffuse, 1.0);
+	//outColor = vec4(1.0, 1.0, 1.0, 1.0);
+	//outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
+
+	outColor = vec4(ambient + diffuse, 1.0);
 }
 `
+*/
 
 func (r *Renderer) createProgram() error {
 	p, err := glutil.CreateProgram(glctx, vertexShader, fragmentShader)
@@ -588,6 +635,7 @@ func (r *Renderer) createProgram() error {
 	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
+
 	return nil
 }
 
@@ -638,7 +686,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		// Model
 		modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
 		rot := C.ovrMatrix4f_CreateRotation(0.0, 0.0, 0.0)
-		scaleAmount := C.float(0.05)
+		scaleAmount := C.float(0.01)
 		scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
 		modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 		modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
@@ -648,6 +696,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		normalC := C.ovrMatrix4f_Transpose(&modelC)
 		normalC = C.ovrMatrix4f_Inverse(&normalC)
 		normal := convertToFloat32(C.ovrMatrix4f_Transpose(&normalC))
+		//normal := convertToFloat32(C.ovrMatrix4f_CreateIdentity())
 
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
