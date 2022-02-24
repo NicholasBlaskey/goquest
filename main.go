@@ -72,7 +72,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"math"
 	"reflect"
 	"runtime"
 	"syscall"
@@ -532,13 +531,17 @@ in vec3 aNormal;
 uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
+uniform mat4 uNormalMatrix;
 
 out vec3 vColor;
 out vec3 vNormal;
+out vec3 vFragPos;
 void main() {
-	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition * 0.1, 1.0)));
 	vColor = aColor;
-	vNormal = aNormal;
+	vNormal = normalize(vec3(uNormalMatrix * vec4(aNormal, 1.0)));
+	vFragPos = vec3(uModelMatrix * vec4(aPosition, 1.0));
+
+	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition * 0.1, 1.0)));
 }
 `
 
@@ -547,10 +550,22 @@ const fragmentShader = `
 
 in lowp vec3 vColor;
 in lowp vec3 vNormal;
+in lowp vec3 vFragPos;
 out lowp vec4 outColor;
 void main() {
+	//vec3 ambient = vec3(0.5, 0.5, 0.5);
+	vec3 ambient = vec3(0.2, 0.2, 0.2);
+	vec3 lightPos = vec3(0.0, 1.0, 0.0);
+    vec3 lightColor = vec3(1.0, 1.0, 1.0);
+
+	vec3 normalized = normalize(vNormal);	
+
+	vec3 lightDir = normalize(lightPos - vFragPos);
+	float nDotL = max(dot(lightDir, normalized), 0.0);
+	vec3 diffuse = lightColor * vColor * nDotL;	
+
 	outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
-	//outColor = vec4(1.0, 0.0, 0.0, 1.0);
+	//outColor = vec4(ambient + diffuse, 1.0);
 }
 `
 
@@ -569,7 +584,8 @@ func (r *Renderer) createProgram() error {
 
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
-	for _, name := range []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix"} {
+	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix", "uNormalMatrix"}
+	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
 	return nil
@@ -619,34 +635,27 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		glctx.UseProgram(r.Program.GLProgram)
 
-		for z := -15.0; z < 0.0; z++ {
-			if z == 0 {
-				continue
-			}
-			for i := float64(0); i < math.Pi*2; i += math.Pi / 4.0 {
-				x, y := math.Cos(i)*(1.0/(z/2.0)), math.Sin(i)*(1.0/(z/2.0))
+		// Model
+		modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
+		rot := C.ovrMatrix4f_CreateRotation(0.0, 0.0, 0.0)
+		scaleAmount := C.float(0.05)
+		scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
+		modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+		modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+		model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
 
-				// Model
-				modelC := C.ovrMatrix4f_CreateTranslation(C.float(x), C.float(y), C.float(z))
-				rot := C.ovrMatrix4f_CreateRotation(0.0, 0.0, 0.0)
-				if int(z)%2 == 0 {
-					rot = C.ovrMatrix4f_CreateRotation(0.0, math.Pi, 0.0)
-				}
+		// Normal
+		normalC := C.ovrMatrix4f_Transpose(&modelC)
+		normalC = C.ovrMatrix4f_Inverse(&normalC)
+		normal := convertToFloat32(C.ovrMatrix4f_Transpose(&normalC))
 
-				scaleAmount := C.float(0.05)
-				scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
-				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-				model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
 
-				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-				glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
-				glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
-
-				glctx.BindVertexArray(r.Geometry.VertexArray)
-				glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
-			}
-		}
+		glctx.BindVertexArray(r.Geometry.VertexArray)
+		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
 		//glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
 
 		// Cleanup
