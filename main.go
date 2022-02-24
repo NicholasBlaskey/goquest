@@ -548,6 +548,8 @@ in lowp vec3 vColor;
 in lowp vec3 vNormal;
 in lowp vec3 vFragPos;
 out lowp vec4 outColor;
+
+uniform vec3 uViewPos;
 void main() {
 	vec3 ambient = vec3(0.3, 0.3, 0.3);
 	vec3 lightPos = vec3(0.0, 0.0, 0.0);
@@ -558,7 +560,13 @@ void main() {
 	float nDotL = max(dot(lightDir, normalized), 0.0);
 	vec3 diffuse = lightColor * vColor * nDotL;
 
-	outColor = vec4(diffuse + ambient, 1.0);
+	// Specular
+	vec3 viewDir = normalize(uViewPos - vFragPos);
+	vec3 halfwayDir = normalize(lightDir + viewDir);
+	float spec = pow(max(dot(normalized, halfwayDir), 0.0), 32.0);
+	vec3 specular = vec3(0.3) * spec;
+
+	outColor = vec4(diffuse + ambient + specular, 1.0);
 }
 `
 
@@ -631,7 +639,8 @@ func (r *Renderer) createProgram() error {
 
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
-	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix", "uNormalMatrix"}
+	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix",
+		"uNormalMatrix", "uViewPos"}
 	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
@@ -656,6 +665,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
+		log.Printf("tracking eye of %+v", &tracking.Eye[i])
 		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
 		projection := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix))
 
@@ -702,6 +712,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
+		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], 0.0, 0.0, 0.0)
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
