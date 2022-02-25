@@ -446,6 +446,7 @@ type Renderer struct {
 	Framebuffers []*Framebuffer
 	Program      *Program
 	Geometry     *Geometry
+	GeometryCube *Geometry
 }
 
 type Geometry struct {
@@ -487,39 +488,62 @@ func (r *Renderer) createGeometry() {
 			0, 1, 7, 7, 4, 0,
 		}
 	*/
-	vertices := heartVerts
-	//indices := heartIndices
 
-	r.Geometry = &Geometry{}
-	log.Println("Bind here!?!?!?")
-	r.Geometry.VertexArray = glctx.CreateVertexArray() // Problem statement
-	log.Println("Post create?")
-	glctx.BindVertexArray(r.Geometry.VertexArray)
-	log.Println("Post bind?")
+	// Heart
+	{
+		vertices := heartVerts
+		r.Geometry = &Geometry{}
+		log.Println("Bind here!?!?!?")
+		r.Geometry.VertexArray = glctx.CreateVertexArray()
+		log.Println("Post create?")
+		glctx.BindVertexArray(r.Geometry.VertexArray)
+		log.Println("Post bind?")
 
-	log.Println("VertexBuffer")
-	r.Geometry.VertexBuffer = glctx.CreateBuffer()
-	glctx.BindBuffer(gl.ARRAY_BUFFER, r.Geometry.VertexBuffer)
-	glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
-		gl.STATIC_DRAW)
+		log.Println("VertexBuffer")
+		r.Geometry.VertexBuffer = glctx.CreateBuffer()
+		glctx.BindBuffer(gl.ARRAY_BUFFER, r.Geometry.VertexBuffer)
+		glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
+			gl.STATIC_DRAW)
 
-	log.Println("attribs")
-	pos := gl.Attrib{Value: 0}
-	glctx.EnableVertexAttribArray(pos)
-	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
-	col := gl.Attrib{Value: 1}
-	glctx.EnableVertexAttribArray(col)
-	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
-	norm := gl.Attrib{Value: 2}
-	glctx.EnableVertexAttribArray(norm)
-	glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
+		log.Println("attribs")
+		pos := gl.Attrib{Value: 0}
+		glctx.EnableVertexAttribArray(pos)
+		glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
+		col := gl.Attrib{Value: 1}
+		glctx.EnableVertexAttribArray(col)
+		glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
+		norm := gl.Attrib{Value: 2}
+		glctx.EnableVertexAttribArray(norm)
+		glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
+	}
 
-	/*
-		log.Println("indexBuffer")
-		r.Geometry.IndexBuffer = glctx.CreateBuffer()
-		glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.Geometry.IndexBuffer)
-		glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices), gl.STATIC_DRAW)
-	*/
+	// Cube
+	{
+		vertices := cubeVerts
+		r.GeometryCube = &Geometry{}
+		log.Println("Bind here!?!?!?")
+		r.GeometryCube.VertexArray = glctx.CreateVertexArray()
+		log.Println("Post create?")
+		glctx.BindVertexArray(r.GeometryCube.VertexArray)
+		log.Println("Post bind?")
+
+		log.Println("VertexBuffer")
+		r.GeometryCube.VertexBuffer = glctx.CreateBuffer()
+		glctx.BindBuffer(gl.ARRAY_BUFFER, r.GeometryCube.VertexBuffer)
+		glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
+			gl.STATIC_DRAW)
+
+		log.Println("attribs")
+		pos := gl.Attrib{Value: 0}
+		glctx.EnableVertexAttribArray(pos)
+		glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
+		col := gl.Attrib{Value: 1}
+		glctx.EnableVertexAttribArray(col)
+		glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
+		norm := gl.Attrib{Value: 2}
+		glctx.EnableVertexAttribArray(norm)
+		glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
+	}
 }
 
 const vertexShader = `
@@ -710,15 +734,28 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		//normal := convertToFloat32(C.ovrMatrix4f_CreateIdentity())
 
 		posX, posY, posZ := view[12], view[13], view[14] // Get camera position
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
 		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
 
+		// Heart
+		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
 		//glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
+
+		// Floor
+		{
+			modelC := C.ovrMatrix4f_CreateTranslation(0.0, 1.0, 0.0)
+			scale := C.ovrMatrix4f_CreateScale(100.0, 0.1, 100.0)
+			modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+			modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+			glctx.BindVertexArray(r.GeometryCube.VertexArray)
+			glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+		}
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
