@@ -86,7 +86,9 @@ import (
 
 	//gl "github.com/go-gl/gl/v3.1/gles2"
 
+	"golang.org/x/mobile/event/key"
 	"golang.org/x/mobile/event/lifecycle"
+
 	"golang.org/x/mobile/exp/app/debug"
 	"golang.org/x/mobile/exp/f32"
 	"golang.org/x/mobile/exp/gl/glutil"
@@ -747,9 +749,9 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Floor
 		{
-			modelC := C.ovrMatrix4f_CreateTranslation(0.0, 1.0, 0.0)
-			scale := C.ovrMatrix4f_CreateScale(100.0, 0.1, 100.0)
-			modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+			modelC := C.ovrMatrix4f_CreateTranslation(2.0, C.float(r.VRApp.FloorHeight), 0.0)
+			scale := C.ovrMatrix4f_CreateScale(1.0, 0.1, 1.0)
+			//modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 			modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
 			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
@@ -883,13 +885,14 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 }
 
 type App struct {
-	Java       *C.ovrJava
-	OVR        *C.ovrMobile
-	EGL        *EGL
-	AndroidApp app.App
-	FrameIndex int
-	GL         gl.Context
-	Worker     gl.Worker
+	Java        *C.ovrJava
+	OVR         *C.ovrMobile
+	EGL         *EGL
+	AndroidApp  app.App
+	FrameIndex  int
+	GL          gl.Context
+	Worker      gl.Worker
+	FloorHeight float32
 }
 
 func appEnterVRMode(vrApp *App) {
@@ -938,7 +941,7 @@ func main() {
 
 	log.Println("Starting main")
 	app.Main(func(a app.App) {
-		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a}
+		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a, FloorHeight: 1.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
 		time.Sleep(1 * time.Second)
@@ -962,7 +965,17 @@ func main() {
 			case lifecycle.Event:
 				log.Printf("Starting %+v", e)
 				//vrApp.GL = initGL()
+			case key.Event:
+				if e.Direction == key.DirPress {
+					dy := float32(0.1)
+					if e.Code == key.CodeVolumeUp {
+						vrApp.FloorHeight += dy
+					} else {
+						vrApp.FloorHeight -= dy
+					}
+				}
 			}
+			//case
 
 			/*
 				//panic("LIFE CYCLE!!!")

@@ -2,7 +2,7 @@
 rm gorift.apk
 
 export CGO_LDFLAGS_ALLOW=".*" # Not a good idea for the future security wise! 
-gomobile build -target=android/arm64 -tags gldebug
+gomobile build -target=android/arm64 #-tags gldebug
 aapt add gorift.apk lib/arm64-v8a/libvrapi.so
 
 # Sign again after adding apk
