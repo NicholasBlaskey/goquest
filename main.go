@@ -563,10 +563,11 @@ void main() {
 	// Specular
 	vec3 viewDir = normalize(uViewPos - vFragPos);
 	vec3 halfwayDir = normalize(lightDir + viewDir);
-	float spec = pow(max(dot(normalized, halfwayDir), 0.0), 32.0);
+	float spec = pow(max(dot(normalized, halfwayDir), 0.0), 256.0);
 	vec3 specular = vec3(0.3) * spec;
 
 	outColor = vec4(diffuse + ambient + specular, 1.0);
+	//outColor = vec4((viewDir + 1.0) / 2.0, 1.0); // Visualize viewDir
 }
 `
 
@@ -708,11 +709,12 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		normal := convertToFloat32(C.ovrMatrix4f_Transpose(&normalC))
 		//normal := convertToFloat32(C.ovrMatrix4f_CreateIdentity())
 
+		posX, posY, posZ := view[12], view[13], view[14] // Get camera position
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
-		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], 0.0, 0.0, 0.0)
+		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
 
 		glctx.BindVertexArray(r.Geometry.VertexArray)
 		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
