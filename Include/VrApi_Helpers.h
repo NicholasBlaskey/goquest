@@ -305,6 +305,7 @@ static inline ovrMatrix4f ovrMatrix4f_CreateProjection(
     return out;
 }
 
+/// ovrMatrix4f_CreateProjectionFov(90.0f, 90.0f, 0.0f, 0.0f, 0.1f, 0.0f);
 /// Returns a projection matrix based on the given FOV.
 static inline ovrMatrix4f ovrMatrix4f_CreateProjectionFov(
     const float fovDegreesX,

@@ -593,6 +593,7 @@ void main() {
 	vec3 specular = vec3(0.3) * spec;
 
 	outColor = vec4(diffuse + ambient + specular, 1.0);
+	outColor = vec4(1.0, 1.0, 1.0, 1.0);
 	//outColor = vec4((viewDir + 1.0) / 2.0, 1.0); // Visualize viewDir
 }
 `
@@ -741,6 +742,14 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
 		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
 
+		// HMM?
+		//ident := C.ovrMatrix4f_CreateIdentity()
+		//glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"],
+		//	convertToFloat32(ident))
+		//glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"],
+		//	convertToFloat32(ident))
+		ident := C.ovrMatrix4f_CreateProjectionFov(90.0, 90.0, 0.0, 0.0, 0.1, 0.0)
+
 		// Heart
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.BindVertexArray(r.Geometry.VertexArray)
@@ -749,7 +758,10 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Floor
 		{
-			modelC := C.ovrMatrix4f_CreateTranslation(2.0, C.float(r.VRApp.FloorHeight), 0.0)
+			//rot := C.ovrMatrix4f_CreateRotation(math.Pi/4.0, math.Pi/4.0, math.Pi/4.0)
+
+			modelC := C.ovrMatrix4f_CreateTranslation(1.0, C.float(r.VRApp.FloorHeight), 0.0)
+			//modelC := C.ovrMatrix4f_CreateTranslation(10.0, C.float(r.VRApp.FloorHeight), 0.0)
 			scale := C.ovrMatrix4f_CreateScale(1.0, 0.1, 1.0)
 			//modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 			modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
