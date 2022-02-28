@@ -546,6 +546,7 @@ func (r *Renderer) createGeometry() {
 		glctx.EnableVertexAttribArray(norm)
 		glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
 	}
+
 }
 
 const vertexShader = `
@@ -593,7 +594,7 @@ void main() {
 	vec3 specular = vec3(0.3) * spec;
 
 	outColor = vec4(diffuse + ambient + specular, 1.0);
-	outColor = vec4(1.0, 1.0, 1.0, 1.0);
+	//outColor = vec4(1.0, 1.0, 1.0, 1.0);
 	//outColor = vec4((viewDir + 1.0) / 2.0, 1.0); // Visualize viewDir
 }
 `
@@ -693,7 +694,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
-		log.Printf("tracking eye of %+v", &tracking.Eye[i])
 		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
 		projection := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix))
 
@@ -707,7 +707,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
 
 		// Enable gl stuff
-		glctx.Enable(gl.CULL_FACE)
+		// TODO specify the geometry such that vertex winding is correct
+		//glctx.Enable(gl.CULL_FACE)
 		glctx.Enable(gl.SCISSOR_TEST)
 		glctx.Enable(gl.DEPTH_TEST)
 
@@ -742,14 +743,6 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
 		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
 
-		// HMM?
-		//ident := C.ovrMatrix4f_CreateIdentity()
-		//glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"],
-		//	convertToFloat32(ident))
-		//glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"],
-		//	convertToFloat32(ident))
-		ident := C.ovrMatrix4f_CreateProjectionFov(90.0, 90.0, 0.0, 0.0, 0.1, 0.0)
-
 		// Heart
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 		glctx.BindVertexArray(r.Geometry.VertexArray)
@@ -758,13 +751,13 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Floor
 		{
+			log.Println("Floor height", C.float(r.VRApp.FloorHeight))
 			//rot := C.ovrMatrix4f_CreateRotation(math.Pi/4.0, math.Pi/4.0, math.Pi/4.0)
-
-			modelC := C.ovrMatrix4f_CreateTranslation(1.0, C.float(r.VRApp.FloorHeight), 0.0)
+			modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorHeight), 0.0)
 			//modelC := C.ovrMatrix4f_CreateTranslation(10.0, C.float(r.VRApp.FloorHeight), 0.0)
-			scale := C.ovrMatrix4f_CreateScale(1.0, 0.1, 1.0)
+			scale := C.ovrMatrix4f_CreateScale(10000.0, 0.1, 10000.0)
 			//modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-			modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+			modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
 			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 			glctx.BindVertexArray(r.GeometryCube.VertexArray)

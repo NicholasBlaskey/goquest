@@ -15,6 +15,8 @@ apksigner\
 
 adb install -r gorift.apk
 
+time sleep 0.5
+
 # Get package name.
 pkg=$(aapt dump badging gorift.apk|awk -F" " '/package/ {print $2}'|awk -F"'" '/name=/ {print $2}')
 act=$(aapt dump badging gorift.apk|awk -F" " '/launchable-activity/ {print $2}'|awk -F"'" '/name=/ {print $2}')
