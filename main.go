@@ -577,20 +577,35 @@ in lowp vec3 vFragPos;
 out lowp vec4 outColor;
 
 uniform vec3 uViewPos;
+uniform int uUseCheckerBoard;
 void main() {
-	vec3 ambient = vec3(0.3, 0.3, 0.3);
-	vec3 lightPos = vec3(0.0, 0.0, 0.0);
+	vec3 col = vColor;
+	if (uUseCheckerBoard == 1) {
+		/*
+		col.r = 0.0;
+		col.b = 1.0;
+		*/
+		if (mod(floor(vFragPos[0]) + floor(vFragPos[2]), 2.0) == 0.0) {
+			col = vec3(1.0, 1.0, 1.0);
+		} else {
+			col = vec3(0.3, 0.3, 0.3);
+		}
+	}
+
+	vec3 ambient = 0.25 * col;
+	//vec3 lightPos = vec3(-1.0, 1.0, -1.0);
+	vec3 lightPos = uViewPos;
     vec3 lightColor = vec3(1.0, 1.0, 1.0);
 	
 	vec3 normalized = normalize(vNormal);
 	vec3 lightDir = normalize(lightPos - vFragPos);
 	float nDotL = max(dot(lightDir, normalized), 0.0);
-	vec3 diffuse = lightColor * vColor * nDotL;
+	vec3 diffuse = lightColor * col * nDotL;
 
 	// Specular
 	vec3 viewDir = normalize(uViewPos - vFragPos);
 	vec3 halfwayDir = normalize(lightDir + viewDir);
-	float spec = pow(max(dot(normalized, halfwayDir), 0.0), 256.0);
+	float spec = pow(max(dot(normalized, halfwayDir), 0.0), 32.0);
 	vec3 specular = vec3(0.3) * spec;
 
 	outColor = vec4(diffuse + ambient + specular, 1.0);
@@ -669,7 +684,7 @@ func (r *Renderer) createProgram() error {
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
 	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix",
-		"uNormalMatrix", "uViewPos"}
+		"uNormalMatrix", "uViewPos", "uUseCheckerBoard"}
 	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
@@ -742,6 +757,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
 		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
+		glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
 
 		// Heart
 		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
@@ -751,6 +767,10 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Floor
 		{
+			// scale * translate???
+			// when it should be translate * scale?
+			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1) // on
+
 			log.Println("Floor height", C.float(r.VRApp.FloorHeight))
 			//rot := C.ovrMatrix4f_CreateRotation(math.Pi/4.0, math.Pi/4.0, math.Pi/4.0)
 			modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorHeight), 0.0)
@@ -946,7 +966,7 @@ func main() {
 
 	log.Println("Starting main")
 	app.Main(func(a app.App) {
-		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a, FloorHeight: 1.0}
+		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a, FloorHeight: -11.6}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
 		time.Sleep(1 * time.Second)
