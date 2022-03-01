@@ -247,6 +247,28 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			case <-submitChan:
 				C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
+
+				var capability C.ovrInputCapabilityHeader
+				i := 0
+				for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
+					log.Printf("%+v,----%+v", capability, C.ovrControllerType_TrackedRemote)
+
+					if capability.Type == C.ovrControllerType_TrackedRemote {
+						var inputState C.ovrInputStateTrackedRemote
+						inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
+						status := C.vrapi_GetCurrentInputState(vrApp.OVR,
+							capability.DeviceID, &inputState.Header)
+						log.Printf("status %+v---%+v", status, C.ovrSuccess)
+						if status == C.ovrSuccess {
+							log.Printf("%+v\n", inputState)
+						}
+
+						// TODO do this to get poise
+						//pose := C.vrapi_GetHandPose(ovr, deviceID,
+					}
+					i++
+				}
+
 			}
 		}
 
@@ -775,7 +797,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 			//rot := C.ovrMatrix4f_CreateRotation(math.Pi/4.0, math.Pi/4.0, math.Pi/4.0)
 			modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorHeight), 0.0)
 			//modelC := C.ovrMatrix4f_CreateTranslation(10.0, C.float(r.VRApp.FloorHeight), 0.0)
-			scale := C.ovrMatrix4f_CreateScale(10000.0, 0.1, 10000.0)
+			scale := C.ovrMatrix4f_CreateScale(10.0, 0.1, 10.0)
 			//modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 			modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
 			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
