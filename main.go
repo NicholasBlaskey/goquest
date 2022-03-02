@@ -253,50 +253,65 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				var capability C.ovrInputCapabilityHeader
 				i := 0
 				for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
-					log.Printf("%+v,----remote:%+v hand:%+v Standardpointer:%+v", capability,
-						C.ovrControllerType_TrackedRemote, C.ovrControllerType_Hand,
-						C.ovrControllerType_StandardPointer)
+					/*
+						log.Printf("%+v,----remote:%+v hand:%+v Standardpointer:%+v", capability,
+							C.ovrControllerType_TrackedRemote, C.ovrControllerType_Hand,
+							C.ovrControllerType_StandardPointer)
+					*/
 
 					if capability.Type == C.ovrControllerType_TrackedRemote && false {
 						var inputState C.ovrInputStateTrackedRemote
 						inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
 						status := C.vrapi_GetCurrentInputState(vrApp.OVR,
 							capability.DeviceID, &inputState.Header)
-						log.Printf("status %+v---%+v", status, C.ovrSuccess)
+						//log.Printf("status %+v---%+v", status, C.ovrSuccess)
 						if status == C.ovrSuccess {
-							log.Printf("%+v\n", inputState)
+							//log.Printf("%+v\n", inputState)
 						}
 					}
 
-					// Hand poise requires that to be enabled in settings???
-					// I think we want something else though?
-					// Since other games can have you pick things up?
-					// Why are we not getting a C.ovrControllerType_Hand???
-					// Like we get 64 which isn't a number provided
-					if capability.Type == C.ovrControllerType_Hand {
-						log.Println("DEVICE?")
-						// TODO get pinch
-						// Get tracking
-						/*
-							C.vrapi_GetInputTrackingState(vrApp.OVR, capability.DeviceID,
-								displayTime, tracking)
-						*/
+					if capability.Type == C.ovrControllerType_StandardPointer {
+						// TODO are orientation of position capabilities set?
+						var inputState C.ovrInputStateStandardPointer
+						inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
+						r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
+							&inputState.Header)
 
-						// Setup handPose?
-						var handPose C.ovrHandPose
-						handPose.Header.Version = C.ovrHandVersion_1
-
-						// Call? DeviceID here is the only main difference
-						r := C.vrapi_GetHandPose(vrApp.OVR, capability.DeviceID,
-							0, &(handPose.Header))
-						if r != C.ovrSuccess {
-							log.Println("ERROR getting hand pose", r)
+						if r == C.ovrSuccess {
+							log.Printf("%+v\n", inputState.GripPose)
 						} else {
-							log.Printf("hands %+v", handPose)
-							panic("SuCESSFULLY")
+							log.Println("error", r)
 						}
-
 					}
+
+					/*
+						// Hand poise requires that to be enabled in settings???
+						// I think we want something else though?
+						// Since other games can have you pick things up?
+						// Why are we not getting a C.ovrControllerType_Hand???
+						// Think hand tracking is without the controller?
+						// I think we want it with th econtroller?
+						// Possible in trackedRemote???
+						// Like we get 64 which isn't a number provided
+						if capability.Type == C.ovrControllerType_Hand {
+							log.Println("DEVICE?")
+
+							// Setup handPose?
+							var handPose C.ovrHandPose
+							handPose.Header.Version = C.ovrHandVersion_1
+
+							// Call? DeviceID here is the only main difference
+							r := C.vrapi_GetHandPose(vrApp.OVR, capability.DeviceID,
+								0, &(handPose.Header))
+							if r != C.ovrSuccess {
+								log.Println("ERROR getting hand pose", r)
+							} else {
+								log.Printf("hands %+v", handPose)
+								panic("SuCESSFULLY")
+							}
+						}
+					*/
+
 					i++
 				}
 
@@ -824,7 +839,7 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 			// when it should be translate * scale?
 			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1) // on
 
-			log.Println("Floor height", C.float(r.VRApp.FloorHeight))
+			//log.Println("Floor height", C.float(r.VRApp.FloorHeight))
 			//rot := C.ovrMatrix4f_CreateRotation(math.Pi/4.0, math.Pi/4.0, math.Pi/4.0)
 			modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorHeight), 0.0)
 			//modelC := C.ovrMatrix4f_CreateTranslation(10.0, C.float(r.VRApp.FloorHeight), 0.0)
