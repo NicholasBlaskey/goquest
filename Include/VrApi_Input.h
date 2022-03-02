@@ -86,15 +86,15 @@ typedef enum ovrTouch_ {
 
 /// Specifies which controller is connected; multiple can be connected at once.
 typedef enum ovrControllerType_ {
-    ovrControllerType_None = 0,
-    ovrControllerType_Reserved0 = (1 << 0), //< LTouch in CAPI
-    ovrControllerType_Reserved1 = (1 << 1), //< RTouch in CAPI
-    ovrControllerType_TrackedRemote = (1 << 2),
-        ovrControllerType_Gamepad = (1 << 4), // Deprecated, will be removed in a future release
-    ovrControllerType_Hand = (1 << 5),
+  ovrControllerType_None = 0, // 0
+    ovrControllerType_Reserved0 = (1 << 0), //< LTouch in CAPI // 1
+    ovrControllerType_Reserved1 = (1 << 1), //< RTouch in CAPI // 2
+  ovrControllerType_TrackedRemote = (1 << 2), // 4...
+        ovrControllerType_Gamepad = (1 << 4), // Deprecated, will be removed in a future release // 8
+  ovrControllerType_Hand = (1 << 5), // 16
 
-        ovrControllerType_StandardPointer = (1 << 7),
-        ovrControllerType_EnumSize = 0x7fffffff
+  ovrControllerType_StandardPointer = (1 << 7), // 128
+  ovrControllerType_EnumSize = 0x7fffffff 
 } ovrControllerType;
 
 typedef uint32_t ovrDeviceID;

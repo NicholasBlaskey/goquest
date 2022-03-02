@@ -204,6 +204,8 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		var layer C.ovrLayerProjection2
 		log.Println("After entering vr mode")
 
+		var displayTime C.double
+		var tracking C.ovrTracking2
 		r := rendererCreate(vrApp)
 		go func() {
 			// Init renderer
@@ -220,9 +222,9 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				//time.Sleep(10 * time.Millisecond)
 				// Draw frame
 				vrApp.FrameIndex++
-				displayTime := C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
+				displayTime = C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
 					C.longlong(vrApp.FrameIndex))
-				tracking := C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+				tracking = C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
 				//log.Printf("tracking %+v\n", tracking)
 
 				layer = r.Render(tracking, float32(displayTime))
@@ -251,9 +253,10 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				var capability C.ovrInputCapabilityHeader
 				i := 0
 				for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
-					log.Printf("%+v,----%+v", capability, C.ovrControllerType_TrackedRemote)
+					log.Printf("%+v,----remote:%+v hand:%+v", capability,
+						C.ovrControllerType_TrackedRemote, C.ovrControllerType_Hand)
 
-					if capability.Type == C.ovrControllerType_TrackedRemote {
+					if capability.Type == C.ovrControllerType_TrackedRemote && false {
 						var inputState C.ovrInputStateTrackedRemote
 						inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
 						status := C.vrapi_GetCurrentInputState(vrApp.OVR,
@@ -262,9 +265,33 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 						if status == C.ovrSuccess {
 							log.Printf("%+v\n", inputState)
 						}
+					}
 
-						// TODO do this to get poise
-						//pose := C.vrapi_GetHandPose(ovr, deviceID,
+					// Why are we not getting a C.ovrControllerType_Hand???
+					// Like we get 64 which isn't a number provided
+					if capability.Type == C.ovrControllerType_Hand {
+						log.Println("DEVICE?")
+						// TODO get pinch
+						// Get tracking
+						/*
+							C.vrapi_GetInputTrackingState(vrApp.OVR, capability.DeviceID,
+								displayTime, tracking)
+						*/
+
+						// Setup handPose?
+						var handPose C.ovrHandPose
+						handPose.Header.Version = C.ovrHandVersion_1
+
+						// Call? DeviceID here is the only main difference
+						r := C.vrapi_GetHandPose(vrApp.OVR, capability.DeviceID,
+							0, &(handPose.Header))
+						if r != C.ovrSuccess {
+							log.Println("ERROR getting hand pose", r)
+						} else {
+							log.Println("hands %+v", handPose)
+							panic("SuCESSFULLY")
+						}
+
 					}
 					i++
 				}
@@ -1022,149 +1049,6 @@ func main() {
 					}
 				}
 			}
-			//case
-
-			/*
-				//panic("LIFE CYCLE!!!")
-				log.Println("Lifecycle event", e.String())
-				vrApp.GL = e.DrawContext.(gl.Context)
-				log.Printf("%+v", vrApp.GL)
-			*/
-			//panic("EH")
-			//C.onWindowFocusChanged
-			/*
-						switch e.Crosses(lifecycle.StageAlive) {
-						//switch e.Crosses(lifecycle.StageVisible) {
-						case lifecycle.CrossOn:
-							log.Println("Starting")
-
-							var ok bool
-							//glctx, ok = e.DrawContext.(gl.Context)
-								if !ok {
-									log.Println("Could not get draw context")
-								}
-
-							onStart(glctx)
-							a.Send(paint.Event{})
-						case lifecycle.CrossOff:
-							log.Println("Ending")
-							onStop(glctx)
-							glctx = nil
-						default:
-							log.Println("Not on or off")
-						}
-					case size.Event:
-						log.Println("Size event")
-						sz = e
-						touchX = float32(sz.WidthPx / 2)
-						touchY = float32(sz.HeightPx / 2)
-					case paint.Event:
-						//log.Println("Paint event")
-						if glctx == nil || e.External {
-							// As we are actively painting as fast as
-							// we can (usually 60 FPS), skip any paint
-							// events sent by the system.
-							continue
-						}
-
-						onPaint(glctx, sz)
-						a.Publish()
-						// Drive the animation by preparing to paint the next frame
-						// after this one is shown.
-						a.Send(paint.Event{})
-					case touch.Event:
-						log.Println("Touch event")
-						touchX = e.X
-						touchY = e.Y
-					default:
-						log.Printf("Unrecognized event %+v", e)
-				}
-			*/
-			//}
 		}
 	})
 }
-
-/*
-func onStart(glctx gl.Context) {
-	log.Println("FINDTHIS")
-	var err error
-	program, err = glutil.CreateProgram(glctx, vertexShader, fragmentShader)
-	if err != nil {
-		log.Printf("error creating GL program: %v", err)
-		return
-	}
-
-	buf = glctx.CreateBuffer()
-	glctx.BindBuffer(gl.ARRAY_BUFFER, buf)
-	glctx.BufferData(gl.ARRAY_BUFFER, triangleData, gl.STATIC_DRAW)
-
-	position = glctx.GetAttribLocation(program, "position")
-	color = glctx.GetUniformLocation(program, "color")
-	offset = glctx.GetUniformLocation(program, "offset")
-
-	images = glutil.NewImages(glctx)
-	fps = debug.NewFPS(images)
-}
-
-func onStop(glctx gl.Context) {
-	//log.Println("FINDTHIS")
-	glctx.DeleteProgram(program)
-	glctx.DeleteBuffer(buf)
-	fps.Release()
-	images.Release()
-}
-
-func onPaint(glctx gl.Context, sz size.Event) {
-	//log.Println("This process")
-	glctx.ClearColor(1, 0, 0, 1)
-	glctx.Clear(gl.COLOR_BUFFER_BIT)
-
-	glctx.UseProgram(program)
-
-	green += 0.01
-	if green > 1 {
-		green = 0
-	}
-	glctx.Uniform4f(color, 0, green, 0, 1)
-
-	glctx.Uniform2f(offset, touchX/float32(sz.WidthPx), touchY/float32(sz.HeightPx))
-
-	glctx.BindBuffer(gl.ARRAY_BUFFER, buf)
-	glctx.EnableVertexAttribArray(position)
-	glctx.VertexAttribPointer(position, coordsPerVertex, gl.FLOAT, false, 0, 0)
-	glctx.DrawArrays(gl.TRIANGLES, 0, vertexCount)
-	glctx.DisableVertexAttribArray(position)
-
-	fps.Draw(sz)
-}
-
-var triangleData = f32.Bytes(binary.LittleEndian,
-	0.0, 0.4, 0.0, // top left
-	0.0, 0.0, 0.0, // bottom left
-	0.4, 0.0, 0.0, // bottom right
-)
-
-const (
-	coordsPerVertex = 3
-	vertexCount     = 3
-)
-
-const vertexShader = `#version 100
-uniform vec2 offset;
-
-attribute vec4 position;
-void main() {
-	// offset comes in with x/y values between 0 and 1.
-	// position bounds are -1 to 1.
-	vec4 offset4 = vec4(2.0*offset.x-1.0, 1.0-2.0*offset.y, 0, 0);
-	gl_Position = position + offset4;
-}`
-
-const fragmentShader = `#version 100
-precision mediump float;
-uniform vec4 color;
-void main() {
-	gl_FragColor = color;
-}`
-*/
