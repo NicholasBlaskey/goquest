@@ -253,8 +253,9 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				var capability C.ovrInputCapabilityHeader
 				i := 0
 				for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
-					log.Printf("%+v,----remote:%+v hand:%+v", capability,
-						C.ovrControllerType_TrackedRemote, C.ovrControllerType_Hand)
+					log.Printf("%+v,----remote:%+v hand:%+v Standardpointer:%+v", capability,
+						C.ovrControllerType_TrackedRemote, C.ovrControllerType_Hand,
+						C.ovrControllerType_StandardPointer)
 
 					if capability.Type == C.ovrControllerType_TrackedRemote && false {
 						var inputState C.ovrInputStateTrackedRemote
@@ -267,6 +268,9 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 						}
 					}
 
+					// Hand poise requires that to be enabled in settings???
+					// I think we want something else though?
+					// Since other games can have you pick things up?
 					// Why are we not getting a C.ovrControllerType_Hand???
 					// Like we get 64 which isn't a number provided
 					if capability.Type == C.ovrControllerType_Hand {
@@ -288,7 +292,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 						if r != C.ovrSuccess {
 							log.Println("ERROR getting hand pose", r)
 						} else {
-							log.Println("hands %+v", handPose)
+							log.Printf("hands %+v", handPose)
 							panic("SuCESSFULLY")
 						}
 

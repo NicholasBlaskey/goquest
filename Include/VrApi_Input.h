@@ -91,7 +91,7 @@ typedef enum ovrControllerType_ {
     ovrControllerType_Reserved1 = (1 << 1), //< RTouch in CAPI // 2
   ovrControllerType_TrackedRemote = (1 << 2), // 4...
         ovrControllerType_Gamepad = (1 << 4), // Deprecated, will be removed in a future release // 8
-  ovrControllerType_Hand = (1 << 5), // 16
+  ovrControllerType_Hand = (1 << 5), // 32
 
   ovrControllerType_StandardPointer = (1 << 7), // 128
   ovrControllerType_EnumSize = 0x7fffffff 
