@@ -127,7 +127,8 @@ func init() {
 }
 */
 
-var handPos []float32
+var handPosLeft []float32
+var handPosRight []float32
 
 func initGL() (gl.Context, gl.Worker) {
 	//runtime.LockOSThread()
@@ -276,6 +277,9 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 						// TODO are orientation of position capabilities set?
 						var inputState C.ovrInputStateStandardPointer
 						inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
+						inputState.Header.TimeInSeconds = displayTime
+
+						// Problem line
 						r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
 							&inputState.Header)
 
@@ -284,14 +288,27 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 							handPose := inputState.GripPose
 
 							//test := inputState.GripPose.
-							handPos = nil
+							var handPos []float32
 							for i := 0; i < 3; i++ {
 								offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
 								res := *(*float32)(unsafe.Add(
 									unsafe.Pointer(&handPose), offset+uintptr(4*i)))
 								handPos = append(handPos, res)
 							}
-							//log.Println(handPos)
+
+							var caps C.ovrInputStandardPointerCapabilities
+							//var caps C.ovrInputCapabilityHeader
+							caps.Header = capability
+							C.vrapi_GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
+							//log.Printf("%+v", caps)
+
+							if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
+								//fmt.Println("TRUE")
+								handPosLeft = handPos
+							} else {
+								//fmt.Println("FAlse", inputState.InputStateStatus)
+								handPosRight = handPos
+							}
 						} else {
 							log.Println("error", r)
 						}
@@ -867,21 +884,27 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Hand(s)
 		{
-			if handPos == nil {
-				handPos = []float32{0.0, 0.0, 0.0}
+			for i := 0; i < 2; i++ {
+				handPos := handPosLeft
+				if i == 0 {
+					handPos = handPosRight
+				}
+				if handPos == nil {
+					handPos = []float32{0.0, 0.0, 0.0}
+				}
+
+				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+				modelC := C.ovrMatrix4f_CreateTranslation(
+					C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]))
+				scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
+				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+				//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
+				model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+				glctx.BindVertexArray(r.GeometryCube.VertexArray)
+				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 			}
-
-			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
-			modelC := C.ovrMatrix4f_CreateTranslation(
-				C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]))
-			scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
-			modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-			//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
-			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-
-			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-			glctx.BindVertexArray(r.GeometryCube.VertexArray)
-			glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 		}
 
 		// Cleanup
