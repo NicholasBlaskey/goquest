@@ -278,7 +278,18 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 							&inputState.Header)
 
 						if r == C.ovrSuccess {
-							log.Printf("%+v\n", inputState.GripPose)
+							//log.Printf("%+v\n", inputState.GripPose)
+							handPose := inputState.GripPose
+
+							//test := inputState.GripPose.
+							handPos = nil
+							for i := 0; i < 3; i++ {
+								offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
+								res := *(*float32)(unsafe.Add(
+									unsafe.Pointer(&handPose), offset+uintptr(4*i)))
+								handPos = append(handPos, res)
+							}
+							//log.Println(handPos)
 						} else {
 							log.Println("error", r)
 						}
@@ -850,6 +861,12 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 			glctx.BindVertexArray(r.GeometryCube.VertexArray)
 			glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+		}
+
+		// Hand(s)
+		{
+			//glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1) // off
+			//modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorH
 		}
 
 		// Cleanup
