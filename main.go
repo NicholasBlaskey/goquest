@@ -127,6 +127,8 @@ func init() {
 }
 */
 
+var handPos []float32
+
 func initGL() (gl.Context, gl.Worker) {
 	//runtime.LockOSThread()
 	//runtime.LockOSThread()
@@ -865,8 +867,21 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 
 		// Hand(s)
 		{
-			//glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1) // off
-			//modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorH
+			if handPos == nil {
+				handPos = []float32{0.0, 0.0, 0.0}
+			}
+
+			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+			modelC := C.ovrMatrix4f_CreateTranslation(
+				C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]))
+			scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
+			modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+			//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
+			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+			glctx.BindVertexArray(r.GeometryCube.VertexArray)
+			glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 		}
 
 		// Cleanup
