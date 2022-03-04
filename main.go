@@ -914,16 +914,27 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 				glctx.BindVertexArray(r.GeometryCube.VertexArray)
 				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 
-				/*
-					// Sword part of hands
-					// TODO add a component in the norma
-					modelC = C.ovrMatrix4f_CreateTranslation(
-						C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]),
-					)
+				// Sword part of hands
+				// TODO add a component in the orientation direction?
+				// Yeah just rotate the up vector with it
+				v := C.ovrVector4f{}
+				v.x = 0.0
+				v.y = 0.0
+				v.z = -0.35
+				v.w = 0.0
+				v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
+				modelC = C.ovrMatrix4f_CreateTranslation(
+					v.x+C.float(handPos[0]), v.y+C.float(handPos[1]), v.z+C.float(handPos[2]),
+				)
+				scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
 
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-				*/
+				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+
+				model = convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+				glctx.BindVertexArray(r.GeometryCube.VertexArray)
+				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 			}
 		}
 
