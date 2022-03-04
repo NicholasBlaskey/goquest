@@ -675,6 +675,7 @@ in lowp vec3 vNormal;
 in lowp vec3 vFragPos;
 out lowp vec4 outColor;
 
+uniform vec3 uSolidColor;
 uniform vec3 uViewPos;
 uniform int uUseCheckerBoard;
 void main() {
@@ -689,6 +690,8 @@ void main() {
 		} else {
 			col = vec3(0.3, 0.3, 0.3);
 		}
+	} else if (uUseCheckerBoard == 2) {
+		col = uSolidColor;
 	}
 
 	vec3 ambient = 0.25 * col;
@@ -783,7 +786,7 @@ func (r *Renderer) createProgram() error {
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
 	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix",
-		"uNormalMatrix", "uViewPos", "uUseCheckerBoard"}
+		"uNormalMatrix", "uViewPos", "uUseCheckerBoard", "uSolidColor"}
 	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
@@ -888,9 +891,11 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 			for i := 0; i < 2; i++ {
 				handPos := handPosLeft
 				orientation := orientationLeft
+				col := []float32{0.3, 0.5, 0.3}
 				if i == 0 {
 					handPos = handPosRight
 					orientation = orientationRight
+					col = []float32{0.3, 0.3, 0.5}
 				}
 				if handPos == nil {
 					handPos = []float32{0.0, 0.0, 0.0}
@@ -901,7 +906,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 					rot = C.ovrMatrix4f_CreateFromQuaternion(orientation)
 				}
 
-				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
+				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2) // solidColor
 				modelC := C.ovrMatrix4f_CreateTranslation(
 					C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]))
 				scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
@@ -935,6 +941,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 				glctx.BindVertexArray(r.GeometryCube.VertexArray)
 				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+
+				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
 			}
 		}
 
