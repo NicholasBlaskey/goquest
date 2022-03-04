@@ -129,6 +129,8 @@ func init() {
 
 var handPosLeft []float32
 var handPosRight []float32
+var orientationLeft *C.ovrQuatf
+var orientationRight *C.ovrQuatf
 
 func initGL() (gl.Context, gl.Worker) {
 	//runtime.LockOSThread()
@@ -274,7 +276,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 					}
 
 					if capability.Type == C.ovrControllerType_StandardPointer {
-						// TODO are orientation of position capabilities set?
 						var inputState C.ovrInputStateStandardPointer
 						inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
 						inputState.Header.TimeInSeconds = displayTime
@@ -303,11 +304,11 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 							//log.Printf("%+v", caps)
 
 							if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
-								//fmt.Println("TRUE")
 								handPosLeft = handPos
+								orientationLeft = &inputState.GripPose.Orientation
 							} else {
-								//fmt.Println("FAlse", inputState.InputStateStatus)
 								handPosRight = handPos
+								orientationRight = &inputState.GripPose.Orientation
 							}
 						} else {
 							log.Println("error", r)
@@ -886,17 +887,25 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 		{
 			for i := 0; i < 2; i++ {
 				handPos := handPosLeft
+				orientation := orientationLeft
 				if i == 0 {
 					handPos = handPosRight
+					orientation = orientationRight
 				}
 				if handPos == nil {
 					handPos = []float32{0.0, 0.0, 0.0}
+				}
+
+				rot := C.ovrMatrix4f_CreateIdentity()
+				if orientation != nil {
+					rot = C.ovrMatrix4f_CreateFromQuaternion(orientation)
 				}
 
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
 				modelC := C.ovrMatrix4f_CreateTranslation(
 					C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]))
 				scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
+				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
 				//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
 				model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
@@ -904,6 +913,17 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProject
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 				glctx.BindVertexArray(r.GeometryCube.VertexArray)
 				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+
+				/*
+					// Sword part of hands
+					// TODO add a component in the norma
+					modelC = C.ovrMatrix4f_CreateTranslation(
+						C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]),
+					)
+
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+				*/
 			}
 		}
 
