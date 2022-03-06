@@ -1,28 +1,5 @@
 //go:build darwin || linux || windows
 // +build android, gldebug
-
-// TODO above build tag?? Does not seem to be working?!!?
-// An app that draws a green triangle on a red background.
-//
-// In order to build this program as an Android APK, using the gomobile tool.
-//
-// See http://godoc.org/golang.org/x/mobile/cmd/gomobile to install gomobile.
-//
-// Get the basic example and use gomobile to build or install it on your device.
-//
-//   $ go get -d golang.org/x/mobile/example/basic
-//   $ gomobile build golang.org/x/mobile/example/basic # will build an APK
-//
-//   # plug your Android device to your computer or start an Android emulator.
-//   # if you have adb installed on your machine, use gomobile install to
-//   # build and deploy the APK to an Android target.
-//   $ gomobile install golang.org/x/mobile/example/basic
-//
-// Switch to your device or emulator to start the Basic application from
-// the launcher.
-// You can also run the application on your desktop by running the command
-// below. (Note: It currently doesn't work on Windows.)
-//   $ go install golang.org/x/mobile/example/basic && basic
 package main
 
 // https://github.com/makepad/hello_quest/blob/master/build.sh
@@ -95,14 +72,9 @@ import (
 	"golang.org/x/mobile/gl"
 	//	internalApp "golang.org/x/mobile/internal/app"
 	//internalApp "golang.org/x/mobile/internal/app"
-)
 
-/*
-// DO we need to lock this???
-func init() {
-	runtime.LockOSThread()
-}
-*/
+	"github.com/nicholasblaskey/vrapi"
+)
 
 var (
 	images *glutil.Images
@@ -120,41 +92,15 @@ var (
 
 var glctx gl.Context
 
-/*
-// So what we want is to actually lock this GL thread to here?
-func init() {
-	runtime.LockOSThread()
-}
-*/
-
 var handPosLeft []float32
 var handPosRight []float32
 var orientationLeft *C.ovrQuatf
 var orientationRight *C.ovrQuatf
 
 func initGL() (gl.Context, gl.Worker) {
-	//runtime.LockOSThread()
-	//runtime.LockOSThread()
-
-	//runtime.LockOSThread()
 
 	log.Println("Initializing gl")
 	glc, worker := gl.NewContext()
-
-	/*
-		workAvailable := worker.WorkAvailable()
-		go func() {
-			for {
-				log.Println("Starting listen")
-				select {
-				case <-workAvailable:
-					log.Println("Work ready")
-					worker.DoWork()
-					log.Println("Finishing work")
-				}
-			}
-		}()
-	*/
 
 	return glc, worker
 }
@@ -170,22 +116,38 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 	return func(vm, jniEnv, ctx uintptr) error {
 		runtime.LockOSThread()
 
-		// Create java object
-		java.Vm = (*C.JavaVM)(unsafe.Pointer(vm))
-		java.Env = (*C.JNIEnv)(unsafe.Pointer(jniEnv))
-		java.ActivityObject = (C.jobject)(unsafe.Pointer(ctx))
-		fmt.Printf("java %+v\n", java)
+		// Calling javaVR so we can incremently convert to
+		// go types.
+		javaVR := vrapi.CreateJavaObject(vm, jniEnv, ctx)
+
+		java.Vm = (*C.JavaVM)(unsafe.Pointer(javaVR.Vm))
+		java.Env = (*C.JNIEnv)(unsafe.Pointer(javaVR.Env))
+		java.ActivityObject = (C.jobject)(unsafe.Pointer(javaVR.ActivityObject))
+		/*
+			// Create java object
+			java.Vm = (*C.JavaVM)(unsafe.Pointer(vm))
+			java.Env = (*C.JNIEnv)(unsafe.Pointer(jniEnv))
+			java.ActivityObject = (C.jobject)(unsafe.Pointer(ctx))
+			fmt.Printf("java %+v\n", java)
+		*/
 
 		// Default params
-		params := C.vrapi_DefaultInitParms(java)
+		params := vrapi.DefaultInitParms(&javaVR)
+		//params := C.vrapi_DefaultInitParms(java)
 		fmt.Printf("params %+v\n", params)
 
 		// Initialize api
-		status := C.vrapi_Initialize(&params)
-		fmt.Printf("status %+v\n", status)
-		if status != C.VRAPI_INITIALIZE_SUCCESS {
-			return fmt.Errorf("Could not initialize vr API with status %+v", status)
+		//status := C.vrapi_Initialize(&params)
+		if err := vrapi.Initialize(&params); err != nil {
+			return err
 		}
+
+		/*
+			fmt.Printf("status %+v\n", status)
+			if status != C.VRAPI_INITIALIZE_SUCCESS {
+				return fmt.Errorf("Could not initialize vr API with status %+v", status)
+			}
+		*/
 
 		mainThreadID := syscall.Gettid()
 
@@ -715,60 +677,6 @@ void main() {
 	//outColor = vec4((viewDir + 1.0) / 2.0, 1.0); // Visualize viewDir
 }
 `
-
-/*
-const vertexShader = `
-#version 300 es
-
-in vec3 aPosition;
-in vec3 aColor;
-in vec3 aNormal;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-uniform mat4 uNormalMatrix;
-
-out vec3 vColor;
-out vec3 vNormal;
-out vec3 vFragPos;
-void main() {
-	vColor = aColor;
-	vNormal = normalize(vec3(uNormalMatrix * vec4(aNormal, 1.0)));
-	vFragPos = vec3(uModelMatrix * vec4(aPosition, 1.0));
-
-	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition * 0.1, 1.0)));
-}
-`
-
-const fragmentShader = `
-#version 300 es
-
-in lowp vec3 vColor;
-in lowp vec3 vNormal;
-in lowp vec3 vFragPos;
-
-out lowp vec4 outColor;
-void main() {
-	outColor = vec4(1.0, 1.0, 1.0, 1.0);
-
-	//vec3 ambient = vec3(0.5, 0.5, 0.5);
-	vec3 ambient = vec3(0.2, 0.2, 0.2);
-	vec3 lightPos = vec3(0.0, 1.0, 0.0);
-    vec3 lightColor = vec3(1.0, 1.0, 1.0);
-
-	vec3 normalized = normalize(vNormal);
-
-	vec3 lightDir = normalize(lightPos - vFragPos);
-	float nDotL = max(dot(lightDir, normalized), 0.0);
-	vec3 diffuse = lightColor * vColor * nDotL;
-
-	//outColor = vec4(1.0, 1.0, 1.0, 1.0);
-	//outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
-
-	outColor = vec4(ambient + diffuse, 1.0);
-}
-`
-*/
 
 func (r *Renderer) createProgram() error {
 	p, err := glutil.CreateProgram(glctx, vertexShader, fragmentShader)
