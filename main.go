@@ -51,7 +51,6 @@ import (
 	"log"
 	"reflect"
 	"runtime"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -119,37 +118,22 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		// Calling javaVR so we can incremently convert to
 		// go types.
 		javaVR := vrapi.CreateJavaObject(vm, jniEnv, ctx)
+		vrApp.NewJava = &javaVR
 
+		// TODO remove
 		java.Vm = (*C.JavaVM)(unsafe.Pointer(javaVR.Vm))
 		java.Env = (*C.JNIEnv)(unsafe.Pointer(javaVR.Env))
 		java.ActivityObject = (C.jobject)(unsafe.Pointer(javaVR.ActivityObject))
-		/*
-			// Create java object
-			java.Vm = (*C.JavaVM)(unsafe.Pointer(vm))
-			java.Env = (*C.JNIEnv)(unsafe.Pointer(jniEnv))
-			java.ActivityObject = (C.jobject)(unsafe.Pointer(ctx))
-			fmt.Printf("java %+v\n", java)
-		*/
+		// END
 
 		// Default params
 		params := vrapi.DefaultInitParms(&javaVR)
-		//params := C.vrapi_DefaultInitParms(java)
 		fmt.Printf("params %+v\n", params)
 
 		// Initialize api
-		//status := C.vrapi_Initialize(&params)
 		if err := vrapi.Initialize(&params); err != nil {
 			return err
 		}
-
-		/*
-			fmt.Printf("status %+v\n", status)
-			if status != C.VRAPI_INITIALIZE_SUCCESS {
-				return fmt.Errorf("Could not initialize vr API with status %+v", status)
-			}
-		*/
-
-		mainThreadID := syscall.Gettid()
 
 		// Init egl
 		var err error
@@ -186,11 +170,12 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			time.Sleep(1 * time.Second)
 			log.Println("Starting render loop")
 			for {
-				//time.Sleep(10 * time.Millisecond)
 				// Draw frame
 				vrApp.FrameIndex++
+				//displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR,
 				displayTime = C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
 					C.longlong(vrApp.FrameIndex))
+
 				tracking = C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
 				//log.Printf("tracking %+v\n", tracking)
 
@@ -206,7 +191,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			}
 		}()
 
-		log.Println(mainThreadID)
 		runtime.LockOSThread()
 		workAvailable := vrApp.Worker.WorkAvailable()
 		for {
@@ -981,6 +965,7 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 
 type App struct {
 	Java        *C.ovrJava
+	NewJava     *vrapi.OVRJava
 	OVR         *C.ovrMobile
 	EGL         *EGL
 	AndroidApp  app.App
@@ -993,33 +978,50 @@ type App struct {
 func appEnterVRMode(vrApp *App) {
 	// Only enter for now, deal with leaving soon
 	if vrApp.OVR == nil {
+		log.Println("Entering vr mode")
+		//modeParams := C.vrapi_DefaultModeParms(vrApp.Java)
+		modeParams := vrapi.DefaultModeParms(vrApp.NewJava)
+
 		/*
-			modeParams := C.vrapi_DefaultModeParms(vrApp.Java)
-			res := C.tryThis(modeParams, vrApp.EGL.Display, vrApp.EGL.Context,
-				(*C.ANativeWindow)(unsafe.Pointer(app.Window)))
-			log.Println(res)
+			// TODO figure out a solution for all this C stuff along with how
+			// we handle the EGL window creation?
+			// Could be a custom type / helper?
+			//modeParams.Flags |= C.VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB
+			modeParams.Flags |= C.VRAPI_MODE_FLAG_NATIVE_WINDOW
+
+			// TODO figure this line out.
+			modeParams.Flags &= ^C.uint(C.VRAPI_MODE_FLAG_RESET_WINDOW_FULLSCREEN)
+
+			log.Println(app.Window)
+			modeParams.Display = C.ulonglong(vrApp.EGL.Display)
+			modeParams.WindowSurface = C.ulonglong(uintptr(unsafe.Pointer(app.Window)))
+			modeParams.ShareContext = C.ulonglong(uintptr(vrApp.EGL.Context))
+
+			log.Printf("modeParams %+v\n", modeParams)
+			log.Printf("Display %+v %+v\n", modeParams.Display, C.eglGetDisplay(C.EGL_DEFAULT_DISPLAY))
+			log.Printf("shareContext %+v", vrApp.EGL.Context)
+			log.Printf("aNativeWindow %p\n", app.Window)
+			log.Printf("eglGetCurrentSurface(EGL_DRAW) = %p\n", C.eglGetCurrentSurface(C.EGL_DRAW))
+			// END
 		*/
 
-		log.Println("Entering vr mode")
-		modeParams := C.vrapi_DefaultModeParms(vrApp.Java)
-		//modeParams.Flags |= C.VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB
+		// Idealy remove some of these ugly casts
 		modeParams.Flags |= C.VRAPI_MODE_FLAG_NATIVE_WINDOW
+		modeParams.Flags &= ^uint32(C.VRAPI_MODE_FLAG_RESET_WINDOW_FULLSCREEN)
+		modeParams.Display = uint64(vrApp.EGL.Display)
+		modeParams.WindowSurface = uint64(uintptr(unsafe.Pointer(app.Window)))
+		modeParams.ShareContext = uint64(uintptr(vrApp.EGL.Context))
 
-		// TODO figure this line out.
-		modeParams.Flags &= ^C.uint(C.VRAPI_MODE_FLAG_RESET_WINDOW_FULLSCREEN)
+		modeParamsC := (*C.ovrModeParms)(unsafe.Pointer(&modeParams))
 
-		log.Println(app.Window)
-		modeParams.Display = C.ulonglong(vrApp.EGL.Display)
-		modeParams.WindowSurface = C.ulonglong(uintptr(unsafe.Pointer(app.Window)))
-		modeParams.ShareContext = C.ulonglong(uintptr(vrApp.EGL.Context))
+		log.Printf("go %+v", modeParams)
+		log.Printf("c %+v", modeParamsC)
 
-		log.Printf("modeParams %+v\n", modeParams)
-		log.Printf("Display %+v %+v\n", modeParams.Display, C.eglGetDisplay(C.EGL_DEFAULT_DISPLAY))
-		log.Printf("shareContext %+v", vrApp.EGL.Context)
-		log.Printf("aNativeWindow %p\n", app.Window)
-		log.Printf("eglGetCurrentSurface(EGL_DRAW) = %p\n", C.eglGetCurrentSurface(C.EGL_DRAW))
+		//panic("HERE")
 
-		vrApp.OVR = C.vrapi_EnterVrMode(&modeParams)
+		//vrApp.OVR = C.vrapi_EnterVrMode(&modeParams)
+		vrApp.OVR = C.vrapi_EnterVrMode(modeParamsC)
+		//vrApp.OVR = vrapi.EnterVrMode(&modeParams)
 		log.Println("Is OVR nil???")
 		log.Println(vrApp)
 	}
