@@ -155,8 +155,10 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		var layer C.ovrLayerProjection2
 		log.Println("After entering vr mode")
 
-		var displayTime C.double
+		//var displayTime C.double
 		var tracking C.ovrTracking2
+		var displayTime float64
+		//var tracking vrapi.OVRTracking2
 		r := rendererCreate(vrApp)
 		go func() {
 			// Init renderer
@@ -173,18 +175,25 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				// Draw frame
 				vrApp.FrameIndex++
 				//displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR,
-				displayTime = C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
-					C.longlong(vrApp.FrameIndex))
 
-				tracking = C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+				// Usage 1
+				/*
+					displayTime = C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
+						C.longlong(vrApp.FrameIndex))
+					tracking = C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
+				*/
+				displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
+				trackingGo := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
+				tracking = *(*C.ovrTracking2)(unsafe.Pointer(&trackingGo))
+
 				//log.Printf("tracking %+v\n", tracking)
 
-				layer = r.Render(tracking, float32(displayTime))
+				layer = r.Render(tracking, displayTime)
 				frame = &C.ovrSubmitFrameDescription2{}
 				frame.Flags = 0
 				frame.SwapInterval = 1
 				frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-				frame.DisplayTime = displayTime
+				frame.DisplayTime = C.double(displayTime)
 				frame.LayerCount = 1
 
 				submitChan <- 0
@@ -198,100 +207,79 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			case <-workAvailable:
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				C.submitFrame(vrApp.OVR, frame, layer)
+				// Usage 2
+				cOVR := (*C.ovrMobile)(unsafe.Pointer(vrApp.OVR))
+				C.submitFrame(cOVR, frame, layer)
+
+				//C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
 
-				var capability C.ovrInputCapabilityHeader
-				i := 0
-				for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
-					/*
-						log.Printf("%+v,----remote:%+v hand:%+v Standardpointer:%+v", capability,
-							C.ovrControllerType_TrackedRemote, C.ovrControllerType_Hand,
-							C.ovrControllerType_StandardPointer)
-					*/
+				// TODO input
+				/*
+					var capability C.ovrInputCapabilityHeader
+					i := 0
+					// Usage 3
+					for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
 
-					if capability.Type == C.ovrControllerType_TrackedRemote && false {
-						var inputState C.ovrInputStateTrackedRemote
-						inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
-						status := C.vrapi_GetCurrentInputState(vrApp.OVR,
-							capability.DeviceID, &inputState.Header)
-						//log.Printf("status %+v---%+v", status, C.ovrSuccess)
-						if status == C.ovrSuccess {
-							//log.Printf("%+v\n", inputState)
+						if capability.Type == C.ovrControllerType_TrackedRemote && false {
+							var inputState C.ovrInputStateTrackedRemote
+							inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
+
+							// Usage 4
+							status := C.vrapi_GetCurrentInputState(vrApp.OVR,
+								capability.DeviceID, &inputState.Header)
+							//log.Printf("status %+v---%+v", status, C.ovrSuccess)
+							if status == C.ovrSuccess {
+								//log.Printf("%+v\n", inputState)
+							}
 						}
+
+						if capability.Type == C.ovrControllerType_StandardPointer {
+							var inputState C.ovrInputStateStandardPointer
+							inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
+							inputState.Header.TimeInSeconds = displayTime
+
+							// Usage 4
+							r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
+								&inputState.Header)
+
+							if r == C.ovrSuccess {
+								//log.Printf("%+v\n", inputState.GripPose)
+								handPose := inputState.GripPose
+
+								//test := inputState.GripPose.
+								var handPos []float32
+								for i := 0; i < 3; i++ {
+									offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
+									res := *(*float32)(unsafe.Add(
+										unsafe.Pointer(&handPose), offset+uintptr(4*i)))
+									handPos = append(handPos, res)
+								}
+
+								var caps C.ovrInputStandardPointerCapabilities
+								//var caps C.ovrInputCapabilityHeader
+								caps.Header = capability
+
+								// Usage 5
+								C.vrapi_GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
+								//log.Printf("%+v", caps)
+
+								if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
+									handPosLeft = handPos
+									orientationLeft = &inputState.GripPose.Orientation
+								} else {
+									handPosRight = handPos
+									orientationRight = &inputState.GripPose.Orientation
+								}
+							} else {
+								log.Println("error", r)
+							}
+						}
+
+						i++
 					}
 
-					if capability.Type == C.ovrControllerType_StandardPointer {
-						var inputState C.ovrInputStateStandardPointer
-						inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
-						inputState.Header.TimeInSeconds = displayTime
-
-						// Problem line
-						r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
-							&inputState.Header)
-
-						if r == C.ovrSuccess {
-							//log.Printf("%+v\n", inputState.GripPose)
-							handPose := inputState.GripPose
-
-							//test := inputState.GripPose.
-							var handPos []float32
-							for i := 0; i < 3; i++ {
-								offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
-								res := *(*float32)(unsafe.Add(
-									unsafe.Pointer(&handPose), offset+uintptr(4*i)))
-								handPos = append(handPos, res)
-							}
-
-							var caps C.ovrInputStandardPointerCapabilities
-							//var caps C.ovrInputCapabilityHeader
-							caps.Header = capability
-							C.vrapi_GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
-							//log.Printf("%+v", caps)
-
-							if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
-								handPosLeft = handPos
-								orientationLeft = &inputState.GripPose.Orientation
-							} else {
-								handPosRight = handPos
-								orientationRight = &inputState.GripPose.Orientation
-							}
-						} else {
-							log.Println("error", r)
-						}
-					}
-
-					/*
-						// Hand poise requires that to be enabled in settings???
-						// I think we want something else though?
-						// Since other games can have you pick things up?
-						// Why are we not getting a C.ovrControllerType_Hand???
-						// Think hand tracking is without the controller?
-						// I think we want it with th econtroller?
-						// Possible in trackedRemote???
-						// Like we get 64 which isn't a number provided
-						if capability.Type == C.ovrControllerType_Hand {
-							log.Println("DEVICE?")
-
-							// Setup handPose?
-							var handPose C.ovrHandPose
-							handPose.Header.Version = C.ovrHandVersion_1
-
-							// Call? DeviceID here is the only main difference
-							r := C.vrapi_GetHandPose(vrApp.OVR, capability.DeviceID,
-								0, &(handPose.Header))
-							if r != C.ovrSuccess {
-								log.Println("ERROR getting hand pose", r)
-							} else {
-								log.Printf("hands %+v", handPose)
-								panic("SuCESSFULLY")
-							}
-						}
-					*/
-
-					i++
-				}
-
+				*/
 			}
 		}
 
@@ -695,7 +683,7 @@ func convertToFloat32(m C.ovrMatrix4f) []float32 {
 	return res
 }
 
-func (r *Renderer) Render(tracking C.ovrTracking2, dt float32) C.ovrLayerProjection2 {
+func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProjection2 {
 	// Create layer and tracking
 	layer := C.vrapi_DefaultLayerProjection2()
 	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
@@ -966,10 +954,10 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 type App struct {
 	Java        *C.ovrJava
 	NewJava     *vrapi.OVRJava
-	OVR         *C.ovrMobile
+	OVR         *vrapi.OVRMobile
 	EGL         *EGL
 	AndroidApp  app.App
-	FrameIndex  int
+	FrameIndex  int64
 	GL          gl.Context
 	Worker      gl.Worker
 	FloorHeight float32
@@ -1012,16 +1000,15 @@ func appEnterVRMode(vrApp *App) {
 		modeParams.WindowSurface = uint64(uintptr(unsafe.Pointer(app.Window)))
 		modeParams.ShareContext = uint64(uintptr(vrApp.EGL.Context))
 
-		modeParamsC := (*C.ovrModeParms)(unsafe.Pointer(&modeParams))
-
-		log.Printf("go %+v", modeParams)
-		log.Printf("c %+v", modeParamsC)
-
-		//panic("HERE")
+		/*
+			modeParamsC := (*C.ovrModeParms)(unsafe.Pointer(&modeParams))
+			log.Printf("go %+v", modeParams)
+			log.Printf("c %+v", modeParamsC)
+		*/
 
 		//vrApp.OVR = C.vrapi_EnterVrMode(&modeParams)
-		vrApp.OVR = C.vrapi_EnterVrMode(modeParamsC)
-		//vrApp.OVR = vrapi.EnterVrMode(&modeParams)
+		//vrApp.OVR = C.vrapi_EnterVrMode(modeParamsC)
+		vrApp.OVR = vrapi.EnterVrMode(&modeParams)
 		log.Println("Is OVR nil???")
 		log.Println(vrApp)
 	}
