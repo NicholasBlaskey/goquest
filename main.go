@@ -218,6 +218,27 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				var capability vrapi.OVRInputCapabilityHeader
 				for vrapi.EnumerateInputDevices(vrApp.OVR, i, &capability) >= 0 {
 					i++
+
+					switch capability.Type {
+
+					case vrapi.OVRControllerType_StandardPointer:
+						var inputState vrapi.OVRInputStateStandardPointer
+						inputState.Header.ControllerType = vrapi.OVRControllerType_StandardPointer
+						inputState.Header.TimeInSeconds = displayTime
+
+						err := vrapi.GetCurrentInputState(vrApp.OVR,
+							capability.DeviceID, &inputState.Header)
+						if err != nil {
+							panic("error")
+						}
+
+						handPosLeft = inputState.GripPose.Position[:]
+						//handPosRight = inputState.GripPose.Position[:]
+
+						log.Printf("%+v", inputState)
+					default:
+						//log.Printf("Unrecognized input device %+v", capability)
+					}
 				}
 
 				/*

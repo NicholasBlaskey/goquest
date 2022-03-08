@@ -3,11 +3,12 @@ module github.com/nicholasblaskey/gorift
 go 1.17
 
 replace golang.org/x/mobile => ../mobile
-replace github.com/nicholasblaskey/vrapi => ../vrapi
 
+replace github.com/nicholasblaskey/vrapi => ../vrapi
 
 require (
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
+	github.com/go-gl/mathgl v1.0.0 // indirect
 	github.com/nicholasblaskey/vrapi v0.0.0-20220304011623-fb80a98f4873 // indirect
 	golang.org/x/exp v0.0.0-20190731235908-ec7cb31e5a56 // indirect
 	golang.org/x/image v0.0.0-20190802002840-cff245a6509b // indirect
