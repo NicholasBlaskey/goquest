@@ -222,6 +222,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 					switch capability.Type {
 
 					case vrapi.OVRControllerType_StandardPointer:
+						// Get input state information.
 						var inputState vrapi.OVRInputStateStandardPointer
 						inputState.Header.ControllerType = vrapi.OVRControllerType_StandardPointer
 						inputState.Header.TimeInSeconds = displayTime
@@ -229,13 +230,27 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 						err := vrapi.GetCurrentInputState(vrApp.OVR,
 							capability.DeviceID, &inputState.Header)
 						if err != nil {
-							panic("error")
+							panic(err)
 						}
 
-						handPosLeft = inputState.GripPose.Position[:]
-						//handPosRight = inputState.GripPose.Position[:]
+						// Get if left or right hand.
+						var caps vrapi.OVRInputStandardPointerCapabilities
+						caps.Header = capability
 
-						log.Printf("%+v", inputState)
+						err = vrapi.GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
+						if err != nil {
+							panic(err)
+						}
+						isLeft := caps.ControllerCapabilities&vrapi.OVRControllerCaps_LeftHand > 0
+						isRight := caps.ControllerCapabilities&vrapi.OVRControllerCaps_RightHand > 0
+						log.Printf("%+v, %+v. %+v", caps.ControllerCapabilities, isLeft, isRight)
+
+						// Update game state.
+						if isLeft {
+							handPosLeft = inputState.GripPose.Position[:]
+						} else {
+							handPosRight = inputState.GripPose.Position[:]
+						}
 					default:
 						//log.Printf("Unrecognized input device %+v", capability)
 					}
