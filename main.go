@@ -209,75 +209,82 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			case <-submitChan:
 				// Usage 2
 				cOVR := (*C.ovrMobile)(unsafe.Pointer(vrApp.OVR))
-				C.submitFrame(cOVR, frame, layer)
+				C.submitFrame(cOVR, frame, layer) // TODO submit frame.
 
 				//C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
 
-				// TODO input
+				i := uint32(0)
+				var capability vrapi.OVRInputCapabilityHeader
+				for vrapi.EnumerateInputDevices(vrApp.OVR, i, &capability) >= 0 {
+					i++
+				}
+
 				/*
+
+					// TODO input
 					var capability C.ovrInputCapabilityHeader
 					i := 0
 					// Usage 3
 					for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
 
-						if capability.Type == C.ovrControllerType_TrackedRemote && false {
-							var inputState C.ovrInputStateTrackedRemote
-							inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
+							if capability.Type == C.ovrControllerType_TrackedRemote && false {
+								var inputState C.ovrInputStateTrackedRemote
+								inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
 
-							// Usage 4
-							status := C.vrapi_GetCurrentInputState(vrApp.OVR,
-								capability.DeviceID, &inputState.Header)
-							//log.Printf("status %+v---%+v", status, C.ovrSuccess)
-							if status == C.ovrSuccess {
-								//log.Printf("%+v\n", inputState)
-							}
-						}
-
-						if capability.Type == C.ovrControllerType_StandardPointer {
-							var inputState C.ovrInputStateStandardPointer
-							inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
-							inputState.Header.TimeInSeconds = displayTime
-
-							// Usage 4
-							r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
-								&inputState.Header)
-
-							if r == C.ovrSuccess {
-								//log.Printf("%+v\n", inputState.GripPose)
-								handPose := inputState.GripPose
-
-								//test := inputState.GripPose.
-								var handPos []float32
-								for i := 0; i < 3; i++ {
-									offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
-									res := *(*float32)(unsafe.Add(
-										unsafe.Pointer(&handPose), offset+uintptr(4*i)))
-									handPos = append(handPos, res)
+								// Usage 4
+								status := C.vrapi_GetCurrentInputState(vrApp.OVR,
+									capability.DeviceID, &inputState.Header)
+								//log.Printf("status %+v---%+v", status, C.ovrSuccess)
+								if status == C.ovrSuccess {
+									//log.Printf("%+v\n", inputState)
 								}
+							}
 
-								var caps C.ovrInputStandardPointerCapabilities
-								//var caps C.ovrInputCapabilityHeader
-								caps.Header = capability
+							if capability.Type == C.ovrControllerType_StandardPointer {
+								var inputState C.ovrInputStateStandardPointer
+								inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
+								inputState.Header.TimeInSeconds = displayTime
 
-								// Usage 5
-								C.vrapi_GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
-								//log.Printf("%+v", caps)
+								// Usage 4
+								r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
+									&inputState.Header)
 
-								if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
-									handPosLeft = handPos
-									orientationLeft = &inputState.GripPose.Orientation
+								if r == C.ovrSuccess {
+									//log.Printf("%+v\n", inputState.GripPose)
+									handPose := inputState.GripPose
+
+									//test := inputState.GripPose.
+									var handPos []float32
+									for i := 0; i < 3; i++ {
+										offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
+										res := *(*float32)(unsafe.Add(
+											unsafe.Pointer(&handPose), offset+uintptr(4*i)))
+										handPos = append(handPos, res)
+									}
+
+									var caps C.ovrInputStandardPointerCapabilities
+									//var caps C.ovrInputCapabilityHeader
+									caps.Header = capability
+
+									// Usage 5
+									C.vrapi_GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
+									//log.Printf("%+v", caps)
+
+									if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
+										handPosLeft = handPos
+										orientationLeft = &inputState.GripPose.Orientation
+									} else {
+										handPosRight = handPos
+										orientationRight = &inputState.GripPose.Orientation
+									}
 								} else {
-									handPosRight = handPos
-									orientationRight = &inputState.GripPose.Orientation
+									log.Println("error", r)
 								}
-							} else {
-								log.Println("error", r)
 							}
-						}
 
-						i++
-					}
+							i++
+						}
 
 				*/
 			}
