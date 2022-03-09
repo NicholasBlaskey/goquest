@@ -172,12 +172,6 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				vrApp.FrameIndex++
 				//displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR,
 
-				// Usage 1
-				/*
-					displayTime = C.vrapi_GetPredictedDisplayTime(vrApp.OVR,
-						C.longlong(vrApp.FrameIndex))
-					tracking = C.vrapi_GetPredictedTracking2(vrApp.OVR, displayTime)
-				*/
 				displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
 				trackingGo := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
 				tracking = *(*C.ovrTracking2)(unsafe.Pointer(&trackingGo))
@@ -675,6 +669,8 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProject
 	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
 	layer.HeadPose = tracking.HeadPose
 
+	log.Printf("our layer %+v", vrapi.DefaultLayerProjection2())
+
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
 		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
@@ -857,10 +853,10 @@ func (r *Renderer) rendererGLInit() error {
 // vrapi_GetTextureSwapChain stuff
 func rendererCreate(vrApp *App) *Renderer {
 	r := &Renderer{VRApp: vrApp}
-	r.Width = int(C.vrapi_GetSystemPropertyInt(
-		vrApp.Java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH))
-	r.Height = int(C.vrapi_GetSystemPropertyInt(
-		vrApp.Java, C.VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT))
+	r.Width = vrapi.GetSystemPropertyInt(
+		vrApp.NewJava, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH)
+	r.Height = vrapi.GetSystemPropertyInt(
+		vrApp.NewJava, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT)
 	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
 
 	// Create swapchain for each framebuffer
@@ -952,7 +948,6 @@ func appEnterVRMode(vrApp *App) {
 	// Only enter for now, deal with leaving soon
 	if vrApp.OVR == nil {
 		log.Println("Entering vr mode")
-		//modeParams := C.vrapi_DefaultModeParms(vrApp.Java)
 		modeParams := vrapi.DefaultModeParms(vrApp.NewJava)
 
 		/*
@@ -991,8 +986,6 @@ func appEnterVRMode(vrApp *App) {
 			log.Printf("c %+v", modeParamsC)
 		*/
 
-		//vrApp.OVR = C.vrapi_EnterVrMode(&modeParams)
-		//vrApp.OVR = C.vrapi_EnterVrMode(modeParamsC)
 		vrApp.OVR = vrapi.EnterVrMode(&modeParams)
 		log.Println("Is OVR nil???")
 		log.Println(vrApp)
