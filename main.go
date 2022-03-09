@@ -72,6 +72,7 @@ import (
 	//	internalApp "golang.org/x/mobile/internal/app"
 	//internalApp "golang.org/x/mobile/internal/app"
 
+	mgl "github.com/go-gl/mathgl/mgl32"
 	"github.com/nicholasblaskey/vrapi"
 )
 
@@ -90,11 +91,6 @@ var (
 )
 
 var glctx gl.Context
-
-var handPosLeft []float32
-var handPosRight []float32
-var orientationLeft *C.ovrQuatf
-var orientationRight *C.ovrQuatf
 
 func initGL() (gl.Context, gl.Worker) {
 
@@ -207,127 +203,74 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			case <-workAvailable:
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				// Usage 2
 				cOVR := (*C.ovrMobile)(unsafe.Pointer(vrApp.OVR))
 				C.submitFrame(cOVR, frame, layer) // TODO submit frame.
-
-				//C.submitFrame(vrApp.OVR, frame, layer)
 				frame = nil
 
-				i := uint32(0)
-				var capability vrapi.OVRInputCapabilityHeader
-				for vrapi.EnumerateInputDevices(vrApp.OVR, i, &capability) >= 0 {
-					i++
-
-					switch capability.Type {
-
-					case vrapi.OVRControllerType_StandardPointer:
-						// Get input state information.
-						var inputState vrapi.OVRInputStateStandardPointer
-						inputState.Header.ControllerType = vrapi.OVRControllerType_StandardPointer
-						inputState.Header.TimeInSeconds = displayTime
-
-						err := vrapi.GetCurrentInputState(vrApp.OVR,
-							capability.DeviceID, &inputState.Header)
-						if err != nil {
-							panic(err)
-						}
-
-						// Get if left or right hand.
-						var caps vrapi.OVRInputStandardPointerCapabilities
-						caps.Header = capability
-
-						err = vrapi.GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
-						if err != nil {
-							panic(err)
-						}
-						isLeft := caps.ControllerCapabilities&vrapi.OVRControllerCaps_LeftHand > 0
-						isRight := caps.ControllerCapabilities&vrapi.OVRControllerCaps_RightHand > 0
-						log.Printf("%+v, %+v. %+v", caps.ControllerCapabilities, isLeft, isRight)
-
-						// Update game state.
-						if isLeft {
-							handPosLeft = inputState.GripPose.Position[:]
-						} else {
-							handPosRight = inputState.GripPose.Position[:]
-						}
-					default:
-						//log.Printf("Unrecognized input device %+v", capability)
-					}
+				if err := handleInput(vrApp, displayTime); err != nil {
+					panic(err) // TODO
 				}
-
-				/*
-
-					// TODO input
-					var capability C.ovrInputCapabilityHeader
-					i := 0
-					// Usage 3
-					for C.vrapi_EnumerateInputDevices(vrApp.OVR, C.uint(i), &capability) >= 0 {
-
-							if capability.Type == C.ovrControllerType_TrackedRemote && false {
-								var inputState C.ovrInputStateTrackedRemote
-								inputState.Header.ControllerType = C.ovrControllerType_TrackedRemote
-
-								// Usage 4
-								status := C.vrapi_GetCurrentInputState(vrApp.OVR,
-									capability.DeviceID, &inputState.Header)
-								//log.Printf("status %+v---%+v", status, C.ovrSuccess)
-								if status == C.ovrSuccess {
-									//log.Printf("%+v\n", inputState)
-								}
-							}
-
-							if capability.Type == C.ovrControllerType_StandardPointer {
-								var inputState C.ovrInputStateStandardPointer
-								inputState.Header.ControllerType = C.ovrControllerType_StandardPointer
-								inputState.Header.TimeInSeconds = displayTime
-
-								// Usage 4
-								r := C.vrapi_GetCurrentInputState(vrApp.OVR, capability.DeviceID,
-									&inputState.Header)
-
-								if r == C.ovrSuccess {
-									//log.Printf("%+v\n", inputState.GripPose)
-									handPose := inputState.GripPose
-
-									//test := inputState.GripPose.
-									var handPos []float32
-									for i := 0; i < 3; i++ {
-										offset := unsafe.Sizeof(handPose) - 3*4 // vec3 so 4 fields of float32
-										res := *(*float32)(unsafe.Add(
-											unsafe.Pointer(&handPose), offset+uintptr(4*i)))
-										handPos = append(handPos, res)
-									}
-
-									var caps C.ovrInputStandardPointerCapabilities
-									//var caps C.ovrInputCapabilityHeader
-									caps.Header = capability
-
-									// Usage 5
-									C.vrapi_GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
-									//log.Printf("%+v", caps)
-
-									if caps.ControllerCapabilities&C.ovrControllerCaps_LeftHand != 0 {
-										handPosLeft = handPos
-										orientationLeft = &inputState.GripPose.Orientation
-									} else {
-										handPosRight = handPos
-										orientationRight = &inputState.GripPose.Orientation
-									}
-								} else {
-									log.Println("error", r)
-								}
-							}
-
-							i++
-						}
-
-				*/
 			}
 		}
 
 		return nil
 	}
+}
+
+func handleInput(vrApp *App, displayTime float64) error {
+	i := uint32(0)
+	var capability vrapi.OVRInputCapabilityHeader
+	for vrapi.EnumerateInputDevices(vrApp.OVR, i, &capability) >= 0 {
+		i++
+
+		switch capability.Type {
+		case vrapi.OVRControllerType_TrackedRemote:
+			var inputState vrapi.OVRInputStateTrackedRemote
+			inputState.Header.ControllerType = vrapi.OVRControllerType_TrackedRemote
+			inputState.Header.TimeInSeconds = displayTime
+
+			err := vrapi.GetCurrentInputState(vrApp.OVR,
+				capability.DeviceID, &inputState.Header)
+			if err != nil {
+				panic(err)
+			}
+			//log.Printf("%+v", inputState)
+		case vrapi.OVRControllerType_StandardPointer:
+			// Get input state information.
+			var inputState vrapi.OVRInputStateStandardPointer
+			inputState.Header.ControllerType = vrapi.OVRControllerType_StandardPointer
+			inputState.Header.TimeInSeconds = displayTime
+
+			err := vrapi.GetCurrentInputState(vrApp.OVR,
+				capability.DeviceID, &inputState.Header)
+			if err != nil {
+				panic(err)
+			}
+
+			// Get if left or right hand.
+			var caps vrapi.OVRInputStandardPointerCapabilities
+			caps.Header = capability
+			err = vrapi.GetInputDeviceCapabilities(vrApp.OVR, &caps.Header)
+
+			if err != nil {
+				return nil
+			}
+			isLeft := caps.ControllerCapabilities&vrapi.OVRControllerCaps_LeftHand > 0
+
+			// Update game state.
+			if isLeft {
+				vrApp.HandPosLeft = inputState.GripPose.Position
+				vrApp.OrientationLeft = inputState.GripPose.Orientation
+			} else {
+				vrApp.HandPosRight = inputState.GripPose.Position
+				vrApp.OrientationRight = inputState.GripPose.Orientation
+			}
+		default:
+			//log.Printf("Unrecognized input device %+v", capability)
+		}
+	}
+
+	return nil
 }
 
 type EGL struct {
@@ -812,27 +755,24 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProject
 		// Hand(s)
 		{
 			for i := 0; i < 2; i++ {
-				handPos := handPosLeft
-				orientation := orientationLeft
+				// Select parameters based on which hand.
+				pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
 				col := []float32{0.3, 0.5, 0.3}
 				if i == 0 {
-					handPos = handPosRight
-					orientation = orientationRight
+					pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
 					col = []float32{0.3, 0.3, 0.5}
-				}
-				if handPos == nil {
-					handPos = []float32{0.0, 0.0, 0.0}
 				}
 
 				rot := C.ovrMatrix4f_CreateIdentity()
-				if orientation != nil {
-					rot = C.ovrMatrix4f_CreateFromQuaternion(orientation)
+				if orient != (mgl.Quat{}) {
+					cOrient := (*C.ovrQuatf)(unsafe.Pointer(&orient))
+					rot = C.ovrMatrix4f_CreateFromQuaternion(cOrient)
 				}
 
 				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2) // solidColor
 				modelC := C.ovrMatrix4f_CreateTranslation(
-					C.float(handPos[0]), C.float(handPos[1]), C.float(handPos[2]))
+					C.float(pos[0]), C.float(pos[1]), C.float(pos[2]))
 				scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
 				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
 				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
@@ -843,17 +783,14 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProject
 				glctx.BindVertexArray(r.GeometryCube.VertexArray)
 				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 
-				// Sword part of hands
-				// TODO add a component in the orientation direction?
-				// Yeah just rotate the up vector with it
 				v := C.ovrVector4f{}
 				v.x = 0.0
 				v.y = 0.0
-				v.z = -0.35
+				v.z = -0.35 // Parameterize this
 				v.w = 0.0
 				v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
 				modelC = C.ovrMatrix4f_CreateTranslation(
-					v.x+C.float(handPos[0]), v.y+C.float(handPos[1]), v.z+C.float(handPos[2]),
+					v.x+C.float(pos[0]), v.y+C.float(pos[1]), v.z+C.float(pos[2]),
 				)
 				scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
 
@@ -1004,6 +941,11 @@ type App struct {
 	GL          gl.Context
 	Worker      gl.Worker
 	FloorHeight float32
+	//
+	OrientationLeft  mgl.Quat
+	HandPosLeft      mgl.Vec3
+	OrientationRight mgl.Quat
+	HandPosRight     mgl.Vec3
 }
 
 func appEnterVRMode(vrApp *App) {
