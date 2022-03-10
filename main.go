@@ -154,7 +154,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		log.Println("After entering vr mode")
 
 		//var displayTime C.double
-		var tracking C.ovrTracking2
+		//var tracking C.ovrTracking2
 		var displayTime float64
 		//var tracking vrapi.OVRTracking2
 		r := rendererCreate(vrApp)
@@ -175,8 +175,8 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				//displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR,
 
 				displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
-				trackingGo := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
-				tracking = *(*C.ovrTracking2)(unsafe.Pointer(&trackingGo))
+				tracking := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
+				//tracking = *(*C.ovrTracking2)(unsafe.Pointer(&trackingGo))
 
 				//log.Printf("tracking %+v\n", tracking)
 
@@ -665,165 +665,193 @@ func convertToFloat32(m C.ovrMatrix4f) []float32 {
 	return res
 }
 
-func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProjection2 {
-	// Create layer and tracking
-	/*
-		layer := C.vrapi_DefaultLayerProjection2()
-		layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
-		layer.HeadPose = tracking.HeadPose
-	*/
-
+func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerProjection2 {
+	// Create layer and attach tracking to it.
 	newLayer := vrapi.DefaultLayerProjection2()
 	newLayer.Header.Flags |= vrapi.FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
-	newLayer.HeadPose = *(*vrapi.OVRRigidBodyPosef)(unsafe.Pointer(&tracking.HeadPose))
-
-	/*
-		log.Printf("their layer %+v", layer)
-		log.Printf("our layer %+v", vrapi.DefaultLayerProjection2())
-	*/
+	newLayer.HeadPose = tracking.HeadPose
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
-		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
-		projection := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix))
+		view := tracking.Eye[i].ViewMatrix.Transpose()
+		projection := tracking.Eye[i].ProjectionMatrix.Transpose()
 
-		// ONE
-		// Attach framebuffer to texture???
-		/*
-			layer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
-			layer.Textures[i].SwapChainIndex = C.int(f.SwapChainIndex)
-			layer.Textures[i].TexCoordsFromTanAngles = C.ovrMatrix4f_TanAngleMatrixFromProjection(
-				&tracking.Eye[i].ProjectionMatrix)
-		*/
-
-		projTracking := (*mgl.Mat4)(unsafe.Pointer(&tracking.Eye[i].ProjectionMatrix))
+		// TODO
 		colorSwapChain := (*vrapi.OVRTextureSwapChain)(unsafe.Pointer(f.ColorTextureSwapChain))
 
+		// Attach framebuffer to texture
 		newLayer.Textures[i].ColorSwapChain = colorSwapChain //f.ColorTextureSwapChain
 		newLayer.Textures[i].SwapChainIndex = f.SwapChainIndex
 		newLayer.Textures[i].TexCoordsFromTanAngles = ovrMatrix4f.TanAngleMatrixFromProjection(
-			projTracking)
-		//&tracking.Eye[i].ProjectionMatrix)
+			&tracking.Eye[i].ProjectionMatrix)
 
-		// Bind framebuffer
-		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
-
-		// Enable gl stuff
-		// TODO specify the geometry such that vertex winding is correct
-		//glctx.Enable(gl.CULL_FACE)
+		// CULLFACE?
 		glctx.Enable(gl.SCISSOR_TEST)
 		glctx.Enable(gl.DEPTH_TEST)
 
-		// viewport, scissor, set color
-		glctx.Viewport(0, 0, f.Width, f.Height)
-		// Why this int32 while viewport int???
-		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
+		// Bind framebuffer and program we are going to use
+		glctx.UseProgram(r.Program.GLProgram)
+		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
 
+		// Clear
+		glctx.Viewport(0, 0, f.Width, f.Height)
+		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
 		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		glctx.UseProgram(r.Program.GLProgram)
+		{ // Per frame uniforms
+			posX, posY, posZ := view[12], view[13], view[14] // Get camera position
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view[:])
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection[:])
+			glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
+		}
 
-		// Model
-		modelC := C.ovrMatrix4f_CreateTranslation(+0.3, 0.0, -0.2)
-		rot := C.ovrMatrix4f_CreateRotation(0.0, 0.0, 0.0)
-		scaleAmount := C.float(0.01)
-		scale := C.ovrMatrix4f_CreateScale(scaleAmount, scaleAmount, scaleAmount)
-		modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-		modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-		model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+		{ // Heart
+			model := mgl.Translate3D(+0.3, 0.0, -0.2)
+			scaleAmount := float32(0.01)
+			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+			normal := model.Inv().Transpose()
 
-		// Normal
-		normalC := C.ovrMatrix4f_Transpose(&modelC)
-		normalC = C.ovrMatrix4f_Inverse(&normalC)
-		normal := convertToFloat32(C.ovrMatrix4f_Transpose(&normalC))
-		//normal := convertToFloat32(C.ovrMatrix4f_CreateIdentity())
+			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
-		posX, posY, posZ := view[12], view[13], view[14] // Get camera position
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection)
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal)
-		glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
-		glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+			glctx.BindVertexArray(r.Geometry.VertexArray)
+			glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
+		}
 
-		// Heart
-		glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-		glctx.BindVertexArray(r.Geometry.VertexArray)
-		glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
-		//glctx.DrawElements(gl.TRIANGLES, len(heartIndices), gl.UNSIGNED_SHORT, 0)
+		{ // Floor
+			model := mgl.Translate3D(0.0, r.VRApp.FloorHeight, 0.0)
+			//model.Mul4(mgl.HomogRotate3D
+			model = model.Mul4(mgl.Scale3D(10.0, 0.1, 10.0))
+			normal := model.Inv().Transpose()
 
-		// Floor
-		{
-			// scale * translate???
-			// when it should be translate * scale?
 			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1) // on
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
-			//log.Println("Floor height", C.float(r.VRApp.FloorHeight))
-			//rot := C.ovrMatrix4f_CreateRotation(math.Pi/4.0, math.Pi/4.0, math.Pi/4.0)
-			modelC := C.ovrMatrix4f_CreateTranslation(0.0, C.float(r.VRApp.FloorHeight), 0.0)
-			//modelC := C.ovrMatrix4f_CreateTranslation(10.0, C.float(r.VRApp.FloorHeight), 0.0)
-			scale := C.ovrMatrix4f_CreateScale(10.0, 0.1, 10.0)
-			//modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-			modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
-			model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
 			glctx.BindVertexArray(r.GeometryCube.VertexArray)
 			glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 		}
 
-		// Hand(s)
-		{
-			for i := 0; i < 2; i++ {
-				// Select parameters based on which hand.
-				pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
-				col := []float32{0.3, 0.5, 0.3}
-				if i == 0 {
-					pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
-					col = []float32{0.3, 0.3, 0.5}
-				}
+		for i := 0; i < 2; i++ { // Hands(s)
+			// Select parameters based on which hand.
+			pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
+			col := []float32{0.3, 0.5, 0.3}
+			if i == 0 {
+				pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
+				col = []float32{0.3, 0.3, 0.5}
+			}
+			rot := mgl.Ident4()
+			if orient != (mgl.Quat{}) {
+				rot = orient.Mat4() // HMMM calculating orientation different......
+			}
 
-				rot := C.ovrMatrix4f_CreateIdentity()
-				if orient != (mgl.Quat{}) {
-					cOrient := (*C.ovrQuatf)(unsafe.Pointer(&orient))
-					rot = C.ovrMatrix4f_CreateFromQuaternion(cOrient)
-				}
+			glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
+			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
 
-				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
-				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2) // solidColor
-				modelC := C.ovrMatrix4f_CreateTranslation(
-					C.float(pos[0]), C.float(pos[1]), C.float(pos[2]))
-				scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
-				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-				//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
-				model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+			{ // Cube hand holder
+				model := mgl.Translate3D(pos[0], pos[1], pos[2])
+				model = model.Mul4(rot)
+				model = model.Mul4(mgl.Scale3D(0.1, 0.1, 0.1))
+				normal := model.Inv().Transpose()
 
-				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+
+				glctx.BindVertexArray(r.GeometryCube.VertexArray)
+				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+			}
+
+			{ // Blade part of sword
+				bladeLength := float32(0.35)
+				v := rot.Mul4x1(mgl.Vec4{0.0, 0.0, -bladeLength, 0.0}).Vec3().Add(pos)
+				model := mgl.Translate3D(v[0], v[1], v[2])
+				model = model.Mul4(rot)
+				model = model.Mul4(mgl.Scale3D(0.01, 0.01, bladeLength*2))
+				normal := model.Inv().Transpose()
+
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+
 				glctx.BindVertexArray(r.GeometryCube.VertexArray)
 				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
 
-				v := C.ovrVector4f{}
-				v.x = 0.0
-				v.y = 0.0
-				v.z = -0.35 // Parameterize this
-				v.w = 0.0
-				v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
-				modelC = C.ovrMatrix4f_CreateTranslation(
-					v.x+C.float(pos[0]), v.y+C.float(pos[1]), v.z+C.float(pos[2]),
-				)
-				scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
+				/*
+					v := C.ovrVector4f{}
+					v.x = 0.0
+					v.y = 0.0
+					v.z = -0.35 // Parameterize this
+					v.w = 0.0
+					v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
+					modelC = C.ovrMatrix4f_CreateTranslation(
+						v.x+C.float(pos[0]), v.y+C.float(pos[1]), v.z+C.float(pos[2]),
+					)
+					scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
 
-				modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-				modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
 
-				model = convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-				glctx.BindVertexArray(r.GeometryCube.VertexArray)
-				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
-
-				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+					model = convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+				*/
 			}
 		}
+
+		/*
+			// Hand(s)
+			{
+				for i := 0; i < 2; i++ {
+					// Select parameters based on which hand.
+					pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
+					col := []float32{0.3, 0.5, 0.3}
+					if i == 0 {
+						pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
+						col = []float32{0.3, 0.3, 0.5}
+					}
+
+					rot := C.ovrMatrix4f_CreateIdentity()
+					if orient != (mgl.Quat{}) {
+						cOrient := (*C.ovrQuatf)(unsafe.Pointer(&orient))
+						rot = C.ovrMatrix4f_CreateFromQuaternion(cOrient)
+					}
+
+					glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
+					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2) // solidColor
+					modelC := C.ovrMatrix4f_CreateTranslation(
+						C.float(pos[0]), C.float(pos[1]), C.float(pos[2]))
+					scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+					//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
+					model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+
+					glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+					glctx.BindVertexArray(r.GeometryCube.VertexArray)
+					glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+
+					v := C.ovrVector4f{}
+					v.x = 0.0
+					v.y = 0.0
+					v.z = -0.35 // Parameterize this
+					v.w = 0.0
+					v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
+					modelC = C.ovrMatrix4f_CreateTranslation(
+						v.x+C.float(pos[0]), v.y+C.float(pos[1]), v.z+C.float(pos[2]),
+					)
+					scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
+
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
+					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
+
+					model = convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
+					glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
+					glctx.BindVertexArray(r.GeometryCube.VertexArray)
+					glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+
+					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+				}
+			}
+		*/
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
@@ -1029,7 +1057,7 @@ func main() {
 
 	log.Println("Starting main")
 	app.Main(func(a app.App) {
-		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a, FloorHeight: -11.6}
+		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a, FloorHeight: -1.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
 		time.Sleep(1 * time.Second)
