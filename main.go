@@ -73,7 +73,9 @@ import (
 	//internalApp "golang.org/x/mobile/internal/app"
 
 	mgl "github.com/go-gl/mathgl/mgl32"
+
 	"github.com/nicholasblaskey/vrapi"
+	"github.com/nicholasblaskey/vrapi/ovrMatrix4f"
 )
 
 var (
@@ -665,22 +667,43 @@ func convertToFloat32(m C.ovrMatrix4f) []float32 {
 
 func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProjection2 {
 	// Create layer and tracking
-	layer := C.vrapi_DefaultLayerProjection2()
-	layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
-	layer.HeadPose = tracking.HeadPose
+	/*
+		layer := C.vrapi_DefaultLayerProjection2()
+		layer.Header.Flags |= C.VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
+		layer.HeadPose = tracking.HeadPose
+	*/
 
-	log.Printf("our layer %+v", vrapi.DefaultLayerProjection2())
+	newLayer := vrapi.DefaultLayerProjection2()
+	newLayer.Header.Flags |= vrapi.FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
+	newLayer.HeadPose = *(*vrapi.OVRRigidBodyPosef)(unsafe.Pointer(&tracking.HeadPose))
+
+	/*
+		log.Printf("their layer %+v", layer)
+		log.Printf("our layer %+v", vrapi.DefaultLayerProjection2())
+	*/
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
 		view := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ViewMatrix))
 		projection := convertToFloat32(C.ovrMatrix4f_Transpose(&tracking.Eye[i].ProjectionMatrix))
 
+		// ONE
 		// Attach framebuffer to texture???
-		layer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
-		layer.Textures[i].SwapChainIndex = C.int(f.SwapChainIndex)
-		layer.Textures[i].TexCoordsFromTanAngles = C.ovrMatrix4f_TanAngleMatrixFromProjection(
-			&tracking.Eye[i].ProjectionMatrix)
+		/*
+			layer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
+			layer.Textures[i].SwapChainIndex = C.int(f.SwapChainIndex)
+			layer.Textures[i].TexCoordsFromTanAngles = C.ovrMatrix4f_TanAngleMatrixFromProjection(
+				&tracking.Eye[i].ProjectionMatrix)
+		*/
+
+		projTracking := (*mgl.Mat4)(unsafe.Pointer(&tracking.Eye[i].ProjectionMatrix))
+		colorSwapChain := (*vrapi.OVRTextureSwapChain)(unsafe.Pointer(f.ColorTextureSwapChain))
+
+		newLayer.Textures[i].ColorSwapChain = colorSwapChain //f.ColorTextureSwapChain
+		newLayer.Textures[i].SwapChainIndex = f.SwapChainIndex
+		newLayer.Textures[i].TexCoordsFromTanAngles = ovrMatrix4f.TanAngleMatrixFromProjection(
+			projTracking)
+		//&tracking.Eye[i].ProjectionMatrix)
 
 		// Bind framebuffer
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, f.Framebuffers[f.SwapChainIndex])
@@ -809,14 +832,17 @@ func (r *Renderer) Render(tracking C.ovrTracking2, dt float64) C.ovrLayerProject
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		f.SwapChainIndex = (f.SwapChainIndex + 1) % f.SwapChainLength
+		f.SwapChainIndex = (f.SwapChainIndex + 1) % int32(f.SwapChainLength)
 	}
+
+	// TWO
+	layer := *(*C.ovrLayerProjection2)(unsafe.Pointer(&newLayer))
 
 	return layer
 }
 
 type Framebuffer struct {
-	SwapChainIndex        int
+	SwapChainIndex        int32
 	SwapChainLength       int
 	Width                 int
 	Height                int
