@@ -376,6 +376,7 @@ static inline ovrMatrix4f ovrMatrix4f_CreateFromQuaternion(const ovrQuatf* q) {
     const float yy = q->y * q->y;
     const float zz = q->z * q->z;
 
+    
     ovrMatrix4f out;
     out.M[0][0] = ww + xx - yy - zz;
     out.M[0][1] = 2 * (q->x * q->y - q->w * q->z);

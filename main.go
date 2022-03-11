@@ -744,7 +744,39 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 			}
 			rot := mgl.Ident4()
 			if orient != (mgl.Quat{}) {
-				rot = orient.Mat4() // HMMM calculating orientation different......
+				// type quat
+				// https://fzheng.me/2017/11/12/quaternion_conventions_en/
+				/*
+					type Quat struct {
+						W float32
+						V Vec3
+					}
+				*/
+				// https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/q2m_c.html
+				//   Relationship between SPICE and Engineering Quaternions
+				//orient = mgl.Quat{orient.V[2], mgl.Vec3{orient.W, orient.V[0], orient.V[1]}}
+
+				// hamilton (0, 1, 2, 3) => jpl (3, -0, -1, -2)
+				// jpl (0, 1, 2, 3) => hamilton ()
+
+				//orient mgl.Quat{-orient.V[2], mgl.Vec3{-orient.W,
+
+				// hamilton (x, y, z, w) => jpl (w, -x, -y, -z)
+				// jpl (x, y, z, w) => hamilton (-y, -z, -w, x) try this
+
+				/*
+					orient[0] = orient[3]
+					orient[1] = -orient[0]
+					orient[1[
+				*/
+				rot = orient.Mat4()
+
+				/*
+					cRot := C.ovrMatrix4f_CreateFromQuaternion((*C.ovrQuatf)(unsafe.Pointer(&orient)))
+					cRot = C.ovrMatrix4f_Transpose(&cRot)
+					rot = *(*mgl.Mat4)(unsafe.Pointer(&cRot))
+				*/
+				//rot =
 			}
 
 			glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
@@ -776,82 +808,8 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 
 				glctx.BindVertexArray(r.GeometryCube.VertexArray)
 				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
-
-				/*
-					v := C.ovrVector4f{}
-					v.x = 0.0
-					v.y = 0.0
-					v.z = -0.35 // Parameterize this
-					v.w = 0.0
-					v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
-					modelC = C.ovrMatrix4f_CreateTranslation(
-						v.x+C.float(pos[0]), v.y+C.float(pos[1]), v.z+C.float(pos[2]),
-					)
-					scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
-
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-
-					model = convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-				*/
 			}
 		}
-
-		/*
-			// Hand(s)
-			{
-				for i := 0; i < 2; i++ {
-					// Select parameters based on which hand.
-					pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
-					col := []float32{0.3, 0.5, 0.3}
-					if i == 0 {
-						pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
-						col = []float32{0.3, 0.3, 0.5}
-					}
-
-					rot := C.ovrMatrix4f_CreateIdentity()
-					if orient != (mgl.Quat{}) {
-						cOrient := (*C.ovrQuatf)(unsafe.Pointer(&orient))
-						rot = C.ovrMatrix4f_CreateFromQuaternion(cOrient)
-					}
-
-					glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
-					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2) // solidColor
-					modelC := C.ovrMatrix4f_CreateTranslation(
-						C.float(pos[0]), C.float(pos[1]), C.float(pos[2]))
-					scale := C.ovrMatrix4f_CreateScale(0.1, 0.1, 0.1)
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-					//modelC = C.ovrMatrix4f_Multiply(&scale, &modelC)
-					model := convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-
-					glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-					glctx.BindVertexArray(r.GeometryCube.VertexArray)
-					glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
-
-					v := C.ovrVector4f{}
-					v.x = 0.0
-					v.y = 0.0
-					v.z = -0.35 // Parameterize this
-					v.w = 0.0
-					v = C.ovrVector4f_MultiplyMatrix4f(&rot, &v)
-					modelC = C.ovrMatrix4f_CreateTranslation(
-						v.x+C.float(pos[0]), v.y+C.float(pos[1]), v.z+C.float(pos[2]),
-					)
-					scale = C.ovrMatrix4f_CreateScale(0.01, 0.01, 0.75)
-
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &rot)
-					modelC = C.ovrMatrix4f_Multiply(&modelC, &scale)
-
-					model = convertToFloat32(C.ovrMatrix4f_Transpose(&modelC))
-					glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model)
-					glctx.BindVertexArray(r.GeometryCube.VertexArray)
-					glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
-
-					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
-				}
-			}
-		*/
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
