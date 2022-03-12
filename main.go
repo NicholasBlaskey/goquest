@@ -676,11 +676,8 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 		view := tracking.Eye[i].ViewMatrix.Transpose()
 		projection := tracking.Eye[i].ProjectionMatrix.Transpose()
 
-		// TODO
-		colorSwapChain := (*vrapi.OVRTextureSwapChain)(unsafe.Pointer(f.ColorTextureSwapChain))
-
 		// Attach framebuffer to texture
-		newLayer.Textures[i].ColorSwapChain = colorSwapChain //f.ColorTextureSwapChain
+		newLayer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
 		newLayer.Textures[i].SwapChainIndex = f.SwapChainIndex
 		newLayer.Textures[i].TexCoordsFromTanAngles = ovrMatrix4f.TanAngleMatrixFromProjection(
 			&tracking.Eye[i].ProjectionMatrix)
@@ -744,39 +741,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 			}
 			rot := mgl.Ident4()
 			if orient != (mgl.Quat{}) {
-				// type quat
-				// https://fzheng.me/2017/11/12/quaternion_conventions_en/
-				/*
-					type Quat struct {
-						W float32
-						V Vec3
-					}
-				*/
-				// https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/q2m_c.html
-				//   Relationship between SPICE and Engineering Quaternions
-				//orient = mgl.Quat{orient.V[2], mgl.Vec3{orient.W, orient.V[0], orient.V[1]}}
-
-				// hamilton (0, 1, 2, 3) => jpl (3, -0, -1, -2)
-				// jpl (0, 1, 2, 3) => hamilton ()
-
-				//orient mgl.Quat{-orient.V[2], mgl.Vec3{-orient.W,
-
-				// hamilton (x, y, z, w) => jpl (w, -x, -y, -z)
-				// jpl (x, y, z, w) => hamilton (-y, -z, -w, x) try this
-
-				/*
-					orient[0] = orient[3]
-					orient[1] = -orient[0]
-					orient[1[
-				*/
 				rot = orient.Mat4()
-
-				/*
-					cRot := C.ovrMatrix4f_CreateFromQuaternion((*C.ovrQuatf)(unsafe.Pointer(&orient)))
-					cRot = C.ovrMatrix4f_Transpose(&cRot)
-					rot = *(*mgl.Mat4)(unsafe.Pointer(&cRot))
-				*/
-				//rot =
 			}
 
 			glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
@@ -813,7 +778,6 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 
 		// Cleanup
 		glctx.BindVertexArray(gl.VertexArray{0})
-		//glctx.UseProgram(gl.Program{Value: 0})
 		glctx.Flush()
 		glctx.BindFramebuffer(gl.DRAW_FRAMEBUFFER, gl.Framebuffer{0})
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
@@ -832,17 +796,19 @@ type Framebuffer struct {
 	SwapChainLength       int
 	Width                 int
 	Height                int
-	ColorTextureSwapChain *C.ovrTextureSwapChain
-	ColorTexture          []uint32
+	ColorTextureSwapChain *vrapi.OVRTextureSwapChain //C.ovrTextureSwapChain
+	ColorTexture          []gl.Texture
 	Renderbuffers         []gl.Renderbuffer
 	Framebuffers          []gl.Framebuffer
 }
 
 func (r *Renderer) rendererGLInit() error {
 	// Framebuffers
-	for i := 0; i < int(C.VRAPI_FRAME_LAYER_EYE_MAX); i++ {
+	for i := 0; i < vrapi.FRAME_LAYER_EYE_MAX; i++ {
 		r.FramebufferCreate(r.Framebuffers[i])
 		log.Printf("Buffer create %d\n", i)
+
+		// TODO swap to append once we figure out the thread stuff.
 		//r.Framebuffers = append(r.Framebuffers, r.FramebufferCreate())
 	}
 
@@ -872,27 +838,23 @@ func rendererCreate(vrApp *App) *Renderer {
 	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
 
 	// Create swapchain for each framebuffer
-	for i := 0; i < C.VRAPI_FRAME_LAYER_EYE_MAX; i++ {
+	for i := 0; i < vrapi.FRAME_LAYER_EYE_MAX; i++ {
 		f := &Framebuffer{Width: r.Width, Height: r.Height}
 
 		log.Println("Creating color texture swap chain")
-		f.ColorTextureSwapChain = C.vrapi_CreateTextureSwapChain3(
-			C.VRAPI_TEXTURE_TYPE_2D, gl.RGBA8, C.int(f.Width), C.int(f.Height), 1, 3)
-
+		f.ColorTextureSwapChain = vrapi.CreateTextureSwapChain3(
+			vrapi.TEXTURE_TYPE_2D, gl.RGBA8, f.Width, f.Height, 1, 3)
 		if f.ColorTextureSwapChain == nil {
 			log.Printf("egl error %+v", eglError(int(C.eglGetError())))
 			panic("Cant get color texture swap chain")
 		}
 
-		f.SwapChainLength = int(C.vrapi_GetTextureSwapChainLength(f.ColorTextureSwapChain))
+		f.SwapChainLength = vrapi.GetTextureSwapChainLength(f.ColorTextureSwapChain)
 		log.Printf("Length of SwapChain %d\n", f.SwapChainLength)
 
-		log.Println(f.SwapChainLength)
 		for i := 0; i < f.SwapChainLength; i++ {
-			colorTextureC := C.vrapi_GetTextureSwapChainHandle(
-				f.ColorTextureSwapChain, C.int(i))
-			log.Println("COLOR TEXTURE C", colorTextureC, f.ColorTextureSwapChain)
-			f.ColorTexture = append(f.ColorTexture, uint32(colorTextureC))
+			handle := vrapi.GetTextureSwapChainHandle(f.ColorTextureSwapChain, i)
+			f.ColorTexture = append(f.ColorTexture, gl.Texture{handle})
 		}
 
 		r.Framebuffers = append(r.Framebuffers, f)
@@ -910,7 +872,7 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 
 	log.Println(f.SwapChainLength)
 	for i := 0; i < f.SwapChainLength; i++ {
-		colorTexture := gl.Texture{uint32(f.ColorTexture[i])}
+		colorTexture := f.ColorTexture[i]
 		glctx.BindTexture(gl.TEXTURE_2D, colorTexture)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 		glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
