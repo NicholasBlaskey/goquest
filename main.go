@@ -948,8 +948,8 @@ func appEnterVRMode(vrApp *App) {
 		*/
 
 		// Idealy remove some of these ugly casts
-		modeParams.Flags |= C.VRAPI_MODE_FLAG_NATIVE_WINDOW
-		modeParams.Flags &= ^uint32(C.VRAPI_MODE_FLAG_RESET_WINDOW_FULLSCREEN)
+		modeParams.Flags |= vrapi.MODE_FLAG_NATIVE_WINDOW
+		modeParams.Flags &= ^vrapi.MODE_FLAG_RESET_WINDOW_FULLSCREEN
 		modeParams.Display = uint64(vrApp.EGL.Display)
 		modeParams.WindowSurface = uint64(uintptr(unsafe.Pointer(app.Window)))
 		modeParams.ShareContext = uint64(uintptr(vrApp.EGL.Context))
