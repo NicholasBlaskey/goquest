@@ -1198,7 +1198,7 @@ typedef struct ovrSubmitFrameDescription2_ {
             /// \unused parameter.
         unsigned char Pad[8];
             uint32_t LayerCount;
-    const ovrLayerHeader2* const* Layers;
+    const ovrLayerHeader2* const* Layers; 
 } ovrSubmitFrameDescription2;
 
 OVR_VRAPI_ASSERT_TYPE_SIZE_32_BIT(ovrSubmitFrameDescription2, 40);

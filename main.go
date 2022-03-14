@@ -149,8 +149,12 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		glctx = vrApp.GL
 
 		submitChan := make(chan int)
-		var frame *C.ovrSubmitFrameDescription2
-		var layer C.ovrLayerProjection2
+		//var frame *C.ovrSubmitFrameDescription2
+
+		var header vrapi.OVRLayerHeader2
+		var frame *vrapi.OVRSubmitFrameDescription2
+		var layer vrapi.OVRLayerProjection2 //C.ovrLayerProjection2
+
 		log.Println("After entering vr mode")
 
 		//var displayTime C.double
@@ -181,12 +185,25 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				//log.Printf("tracking %+v\n", tracking)
 
 				layer = r.Render(tracking, displayTime)
-				frame = &C.ovrSubmitFrameDescription2{}
-				frame.Flags = 0
-				frame.SwapInterval = 1
-				frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-				frame.DisplayTime = C.double(displayTime)
-				frame.LayerCount = 1
+
+				header = layer.Header
+				frame = &vrapi.OVRSubmitFrameDescription2{
+					SwapInterval: 1,
+					FrameIndex:   uint64(vrApp.FrameIndex),
+					DisplayTime:  displayTime,
+					LayerCount:   1,
+					//Layers:       [1]*vrapi.OVRLayerHeader2{header},
+				}
+				_ = header
+
+				/*
+					frame = &C.ovrSubmitFrameDescription2{}
+					frame.Flags = 0
+					frame.SwapInterval = 1
+					frame.FrameIndex = C.ulong(vrApp.FrameIndex)
+					frame.DisplayTime = C.double(displayTime)
+					frame.LayerCount = 1
+				*/
 
 				submitChan <- 0
 			}
@@ -199,9 +216,23 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			case <-workAvailable:
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				cOVR := (*C.ovrMobile)(unsafe.Pointer(vrApp.OVR))
-				C.submitFrame(cOVR, frame, layer) // TODO submit frame.
-				frame = nil
+				//cOVR := (*C.ovrMobile)(unsafe.Pointer(vrApp.OVR))
+				//C.submitFrame(cOVR, frame, layer) // TODO submit frame.
+				//frame = nil
+
+				vrapi.SubmitFrame2(vrApp.OVR, frame, header, layer)
+
+				/*
+					void submitFrame(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerProjection2 layer) {
+					//void addLayers(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerCube2 layer) {
+						const ovrLayerHeader2* layers[] = { &layer.Header };
+						(*frame).Layers = layers;
+
+						//printf("%p", *layers);
+					    vrapi_SubmitFrame2(ovr, frame);
+					}
+
+				*/
 
 				if err := handleInput(vrApp, displayTime); err != nil {
 					panic(err) // TODO
@@ -665,11 +696,11 @@ func convertToFloat32(m C.ovrMatrix4f) []float32 {
 	return res
 }
 
-func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerProjection2 {
+func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLayerProjection2 {
 	// Create layer and attach tracking to it.
-	newLayer := vrapi.DefaultLayerProjection2()
-	newLayer.Header.Flags |= vrapi.FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
-	newLayer.HeadPose = tracking.HeadPose
+	layer := vrapi.DefaultLayerProjection2()
+	layer.Header.Flags |= vrapi.FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION
+	layer.HeadPose = tracking.HeadPose
 
 	// For each framebuffer
 	for i, f := range r.Framebuffers {
@@ -677,9 +708,9 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 		projection := tracking.Eye[i].ProjectionMatrix.Transpose()
 
 		// Attach framebuffer to texture
-		newLayer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
-		newLayer.Textures[i].SwapChainIndex = f.SwapChainIndex
-		newLayer.Textures[i].TexCoordsFromTanAngles = ovrMatrix4f.TanAngleMatrixFromProjection(
+		layer.Textures[i].ColorSwapChain = f.ColorTextureSwapChain
+		layer.Textures[i].SwapChainIndex = f.SwapChainIndex
+		layer.Textures[i].TexCoordsFromTanAngles = ovrMatrix4f.TanAngleMatrixFromProjection(
 			&tracking.Eye[i].ProjectionMatrix)
 
 		// CULLFACE?
@@ -786,7 +817,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) C.ovrLayerPro
 	}
 
 	// TWO
-	layer := *(*C.ovrLayerProjection2)(unsafe.Pointer(&newLayer))
+	//layer := *(*C.ovrLayerProjection2)(unsafe.Pointer(&newLayer))
 
 	return layer
 }
@@ -924,41 +955,12 @@ func appEnterVRMode(vrApp *App) {
 		log.Println("Entering vr mode")
 		modeParams := vrapi.DefaultModeParms(vrApp.NewJava)
 
-		/*
-			// TODO figure out a solution for all this C stuff along with how
-			// we handle the EGL window creation?
-			// Could be a custom type / helper?
-			//modeParams.Flags |= C.VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB
-			modeParams.Flags |= C.VRAPI_MODE_FLAG_NATIVE_WINDOW
-
-			// TODO figure this line out.
-			modeParams.Flags &= ^C.uint(C.VRAPI_MODE_FLAG_RESET_WINDOW_FULLSCREEN)
-
-			log.Println(app.Window)
-			modeParams.Display = C.ulonglong(vrApp.EGL.Display)
-			modeParams.WindowSurface = C.ulonglong(uintptr(unsafe.Pointer(app.Window)))
-			modeParams.ShareContext = C.ulonglong(uintptr(vrApp.EGL.Context))
-
-			log.Printf("modeParams %+v\n", modeParams)
-			log.Printf("Display %+v %+v\n", modeParams.Display, C.eglGetDisplay(C.EGL_DEFAULT_DISPLAY))
-			log.Printf("shareContext %+v", vrApp.EGL.Context)
-			log.Printf("aNativeWindow %p\n", app.Window)
-			log.Printf("eglGetCurrentSurface(EGL_DRAW) = %p\n", C.eglGetCurrentSurface(C.EGL_DRAW))
-			// END
-		*/
-
 		// Idealy remove some of these ugly casts
 		modeParams.Flags |= vrapi.MODE_FLAG_NATIVE_WINDOW
 		modeParams.Flags &= ^vrapi.MODE_FLAG_RESET_WINDOW_FULLSCREEN
 		modeParams.Display = uint64(vrApp.EGL.Display)
 		modeParams.WindowSurface = uint64(uintptr(unsafe.Pointer(app.Window)))
 		modeParams.ShareContext = uint64(uintptr(vrApp.EGL.Context))
-
-		/*
-			modeParamsC := (*C.ovrModeParms)(unsafe.Pointer(&modeParams))
-			log.Printf("go %+v", modeParams)
-			log.Printf("c %+v", modeParamsC)
-		*/
 
 		vrApp.OVR = vrapi.EnterVrMode(&modeParams)
 		log.Println("Is OVR nil???")
