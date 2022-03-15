@@ -192,6 +192,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 					FrameIndex:   uint64(vrApp.FrameIndex),
 					DisplayTime:  displayTime,
 					LayerCount:   1,
+					Layers:       []*vrapi.OVRLayerHeader2{&layer.Header},
 					//Layers:       [1]*vrapi.OVRLayerHeader2{header},
 				}
 				_ = header
@@ -220,7 +221,7 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				//C.submitFrame(cOVR, frame, layer) // TODO submit frame.
 				//frame = nil
 
-				vrapi.SubmitFrame2(vrApp.OVR, frame, header, layer)
+				vrapi.SubmitFrame2(vrApp.OVR, frame)
 
 				/*
 					void submitFrame(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerProjection2 layer) {
