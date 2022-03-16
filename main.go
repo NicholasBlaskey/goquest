@@ -87,23 +87,15 @@ func initGL() (gl.Context, gl.Worker) {
 	return glc, worker
 }
 
-func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error {
+func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 	return func(vm, jniEnv, ctx uintptr) error {
-		runtime.LockOSThread()
+		// Initialize gl and vrapi context
 
-		// Calling javaVR so we can incremently convert to
-		// go types.
-		javaVR := vrapi.CreateJavaObject(vm, jniEnv, ctx)
-		vrApp.NewJava = &javaVR
-
-		// TODO remove
-		java.Vm = (*C.JavaVM)(unsafe.Pointer(javaVR.Vm))
-		java.Env = (*C.JNIEnv)(unsafe.Pointer(javaVR.Env))
-		java.ActivityObject = (C.jobject)(unsafe.Pointer(javaVR.ActivityObject))
-		// END
+		java := vrapi.CreateJavaObject(vm, jniEnv, ctx)
+		vrApp.Java = &java
 
 		// Default params
-		params := vrapi.DefaultInitParms(&javaVR)
+		params := vrapi.DefaultInitParms(vrApp.Java)
 		fmt.Printf("params %+v\n", params)
 
 		// Initialize api
@@ -625,15 +617,6 @@ func (r *Renderer) createProgram() error {
 	return nil
 }
 
-func convertToFloat32(m C.ovrMatrix4f) []float32 {
-	res := make([]float32, 16)
-	for i := 0; i < 16; i++ {
-		p := unsafe.Pointer(&m)
-		res[i] = *(*float32)(unsafe.Add(p, uintptr(i)*4))
-	}
-	return res
-}
-
 func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLayerProjection2 {
 	// Create layer and attach tracking to it.
 	layer := vrapi.DefaultLayerProjection2()
@@ -801,9 +784,9 @@ func (r *Renderer) rendererGLInit() error {
 func rendererCreate(vrApp *App) *Renderer {
 	r := &Renderer{VRApp: vrApp}
 	r.Width = vrapi.GetSystemPropertyInt(
-		vrApp.NewJava, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH)
+		vrApp.Java, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH)
 	r.Height = vrapi.GetSystemPropertyInt(
-		vrApp.NewJava, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT)
+		vrApp.Java, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT)
 	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
 
 	// Create swapchain for each framebuffer
@@ -871,8 +854,7 @@ func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
 }
 
 type App struct {
-	Java        *C.ovrJava
-	NewJava     *vrapi.OVRJava
+	Java        *vrapi.OVRJava
 	OVR         *vrapi.OVRMobile
 	EGL         *EGL
 	AndroidApp  app.App
@@ -891,7 +873,7 @@ func appEnterVRMode(vrApp *App) {
 	// Only enter for now, deal with leaving soon
 	if vrApp.OVR == nil {
 		log.Println("Entering vr mode")
-		modeParams := vrapi.DefaultModeParms(vrApp.NewJava)
+		modeParams := vrapi.DefaultModeParms(vrApp.Java)
 
 		// Idealy remove some of these ugly casts
 		modeParams.Flags |= vrapi.MODE_FLAG_NATIVE_WINDOW
@@ -917,7 +899,7 @@ func main() {
 
 	log.Println("Starting main")
 	app.Main(func(a app.App) {
-		vrApp := &App{Java: &C.ovrJava{}, AndroidApp: a, FloorHeight: -1.0}
+		vrApp := &App{AndroidApp: a, FloorHeight: -1.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
 		time.Sleep(1 * time.Second)
@@ -927,7 +909,7 @@ func main() {
 		log.Println("Initializing vrapi")
 
 		go func() {
-			err := app.RunOnJVM(initVRAPI(vrApp.Java, vrApp))
+			err := app.RunOnJVM(initVRAPI(vrApp))
 			if err != nil {
 				panic(err)
 			}
