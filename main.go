@@ -157,6 +157,9 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 
 		log.Println("After entering vr mode")
 
+		vrctx, vrWorker := vrapi.NewContext()
+		vrWork := vrWorker.WorkAvailable()
+
 		//var displayTime C.double
 		//var tracking C.ovrTracking2
 		var displayTime float64
@@ -197,47 +200,37 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 				}
 				_ = header
 
-				/*
-					frame = &C.ovrSubmitFrameDescription2{}
-					frame.Flags = 0
-					frame.SwapInterval = 1
-					frame.FrameIndex = C.ulong(vrApp.FrameIndex)
-					frame.DisplayTime = C.double(displayTime)
-					frame.LayerCount = 1
-				*/
+				//submitChan <- 0
 
-				submitChan <- 0
+				log.Println("Do we blcok?")
+				vrctx.SubmitFrame2(vrApp.OVR, frame)
+				log.Println("Blocked")
+				if err := handleInput(vrApp, displayTime); err != nil {
+					panic(err) // TODO
+				}
+
 			}
 		}()
 
 		runtime.LockOSThread()
-		workAvailable := vrApp.Worker.WorkAvailable()
+		glWork := vrApp.Worker.WorkAvailable()
+
 		for {
 			select {
-			case <-workAvailable:
+			case <-glWork:
 				vrApp.Worker.DoWork()
 			case <-submitChan:
-				//cOVR := (*C.ovrMobile)(unsafe.Pointer(vrApp.OVR))
-				//C.submitFrame(cOVR, frame, layer) // TODO submit frame.
-				//frame = nil
-
-				vrapi.SubmitFrame2(vrApp.OVR, frame)
-
+				//vrapi.SubmitFrame2(vrApp.OVR, frame)
 				/*
-					void submitFrame(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerProjection2 layer) {
-					//void addLayers(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerCube2 layer) {
-						const ovrLayerHeader2* layers[] = { &layer.Header };
-						(*frame).Layers = layers;
+					vrctx.SubmitFrame2(vrApp.OVR, frame)
 
-						//printf("%p", *layers);
-					    vrapi_SubmitFrame2(ovr, frame);
+					if err := handleInput(vrApp, displayTime); err != nil {
+						panic(err) // TODO
 					}
-
 				*/
-
-				if err := handleInput(vrApp, displayTime); err != nil {
-					panic(err) // TODO
-				}
+			case <-vrWork:
+				log.Println("Got work")
+				vrWorker.DoWork()
 			}
 		}
 
