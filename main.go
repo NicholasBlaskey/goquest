@@ -65,7 +65,6 @@ import (
 	"golang.org/x/mobile/event/key"
 	"golang.org/x/mobile/event/lifecycle"
 
-	"golang.org/x/mobile/exp/app/debug"
 	"golang.org/x/mobile/exp/f32"
 	"golang.org/x/mobile/exp/gl/glutil"
 	"golang.org/x/mobile/gl"
@@ -78,20 +77,6 @@ import (
 	"github.com/nicholasblaskey/vrapi/ovrMatrix4f"
 )
 
-var (
-	images *glutil.Images
-	fps    *debug.FPS
-	//program  gl.Program
-	//position gl.Attrib
-	//offset gl.Uniform
-	//color  gl.Uniform
-	//buf    gl.Buffer
-
-	green  float32
-	touchX float32
-	touchY float32
-)
-
 var glctx gl.Context
 
 func initGL() (gl.Context, gl.Worker) {
@@ -100,13 +85,6 @@ func initGL() (gl.Context, gl.Worker) {
 	glc, worker := gl.NewContext()
 
 	return glc, worker
-}
-
-// export myWindow
-func myWindow(activity *C.ANativeActivity, window *C.ANativeWindow) {
-	for i := 0; i < 100; i++ {
-		log.Println("my window", i)
-	}
 }
 
 func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error {
@@ -145,25 +123,12 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 		appEnterVRMode(vrApp)
 
 		// Init gl
+		vrctx, vrWorker := vrapi.NewContext()
 		vrApp.GL, vrApp.Worker = initGL()
 		glctx = vrApp.GL
 
-		submitChan := make(chan int)
-		//var frame *C.ovrSubmitFrameDescription2
-
-		var header vrapi.OVRLayerHeader2
-		var frame *vrapi.OVRSubmitFrameDescription2
-		var layer vrapi.OVRLayerProjection2 //C.ovrLayerProjection2
-
 		log.Println("After entering vr mode")
 
-		vrctx, vrWorker := vrapi.NewContext()
-		vrWork := vrWorker.WorkAvailable()
-
-		//var displayTime C.double
-		//var tracking C.ovrTracking2
-		var displayTime float64
-		//var tracking vrapi.OVRTracking2
 		r := rendererCreate(vrApp)
 		go func() {
 			// Init renderer
@@ -176,21 +141,16 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 			log.Println("Calling render loop")
 			time.Sleep(1 * time.Second)
 			log.Println("Starting render loop")
+
+			// Render loop
 			for {
-				// Draw frame
 				vrApp.FrameIndex++
-				//displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR,
 
-				displayTime = vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
+				displayTime := vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
 				tracking := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
-				//tracking = *(*C.ovrTracking2)(unsafe.Pointer(&trackingGo))
 
-				//log.Printf("tracking %+v\n", tracking)
-
-				layer = r.Render(tracking, displayTime)
-
-				header = layer.Header
-				frame = &vrapi.OVRSubmitFrameDescription2{
+				layer := r.Render(tracking, displayTime)
+				frame := &vrapi.OVRSubmitFrameDescription2{
 					SwapInterval: 1,
 					FrameIndex:   uint64(vrApp.FrameIndex),
 					DisplayTime:  displayTime,
@@ -198,38 +158,22 @@ func initVRAPI(java *C.ovrJava, vrApp *App) func(vm, jniEnv, ctx uintptr) error 
 					Layers:       []*vrapi.OVRLayerHeader2{&layer.Header},
 					//Layers:       [1]*vrapi.OVRLayerHeader2{header},
 				}
-				_ = header
 
-				//submitChan <- 0
-
-				log.Println("Do we blcok?")
 				vrctx.SubmitFrame2(vrApp.OVR, frame)
-				log.Println("Blocked")
 				if err := handleInput(vrApp, displayTime); err != nil {
 					panic(err) // TODO
 				}
-
 			}
 		}()
 
 		runtime.LockOSThread()
 		glWork := vrApp.Worker.WorkAvailable()
-
+		vrWork := vrWorker.WorkAvailable()
 		for {
 			select {
 			case <-glWork:
 				vrApp.Worker.DoWork()
-			case <-submitChan:
-				//vrapi.SubmitFrame2(vrApp.OVR, frame)
-				/*
-					vrctx.SubmitFrame2(vrApp.OVR, frame)
-
-					if err := handleInput(vrApp, displayTime); err != nil {
-						panic(err) // TODO
-					}
-				*/
 			case <-vrWork:
-				log.Println("Got work")
 				vrWorker.DoWork()
 			}
 		}
