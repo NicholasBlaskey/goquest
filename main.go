@@ -8,40 +8,11 @@ package main
 #cgo CPPFLAGS: -I./Include -I/usr/local/include
 #cgo LDFLAGS: -v -march=armv8-a -shared -L./lib/arm64-v8a/ -lvrapi -landroid
 
-//-Wl --wrap=onNativeWindowCreated
-
 #include <android/native_activity.h>
-
 #include <android/native_window_jni.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-#include <VrApi.h>
-#include <VrApi_Helpers.h>
-#include <VrApi_Input.h>
-#include <VrApi_SystemUtils.h>
-
-#include <GLES3/gl3.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-
-// TODO why when we return
-// ovrLayerHead2* does the vrAPI think the layer type is -175551239215???
-// This is fine for now but further investigate because something
-// really intresting seems to be going on here. Its really weird how its a negative
-// number, like in the case of it somehow being intrepeted as the address of it
-// it would be positive.
-// Twos complmenet maybe? Somehow intrepeting as a signed value. Seems the number might be
-// off?
-void submitFrame(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerProjection2 layer) {
-//void addLayers(ovrMobile* ovr, ovrSubmitFrameDescription2* frame, ovrLayerCube2 layer) {
-	const ovrLayerHeader2* layers[] = { &layer.Header };
-	(*frame).Layers = layers;
-
-	//printf("%p", *layers);
-    vrapi_SubmitFrame2(ovr, frame);
-}
 */
 import "C"
 
@@ -51,7 +22,6 @@ import (
 	"log"
 	"reflect"
 	"runtime"
-	"time"
 	"unsafe"
 
 	//"github.com/go-gl/gl/v2.1/gl"
@@ -124,17 +94,12 @@ func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 		log.Println("After entering vr mode")
 
 		go func() {
-			r := rendererCreate(vrApp)
-
-			// Init renderer
 			log.Println("Creating renderer")
-			if err := r.rendererGLInit(); err != nil {
+			r, err := rendererCreate(vrApp)
+			if err != nil {
 				panic(err)
-				//return err
 			}
 
-			log.Println("Calling render loop")
-			time.Sleep(1 * time.Second)
 			log.Println("Starting render loop")
 
 			// Render loop
@@ -758,6 +723,7 @@ type Framebuffer struct {
 	Framebuffers          []gl.Framebuffer
 }
 
+/*
 func (r *Renderer) rendererGLInit() error {
 	// Framebuffers
 	for i := 0; i < vrapi.FRAME_LAYER_EYE_MAX; i++ {
@@ -782,15 +748,38 @@ func (r *Renderer) rendererGLInit() error {
 
 	return nil
 }
+*/
 
 // This needs to run on the mainthread, for
 // vrapi_GetTextureSwapChain stuff
-func rendererCreate(vrApp *App) *Renderer {
+func rendererCreate(vrApp *App) (*Renderer, error) {
 	r := &Renderer{VRApp: vrApp}
 	r.Width = vrapi.GetSystemPropertyInt(
 		vrApp.Java, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH)
 	r.Height = vrapi.GetSystemPropertyInt(
 		vrApp.Java, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT)
+
+	// Framebuffers
+	if err := r.framebufferCreate(); err != nil {
+		return nil, err
+	}
+
+	// Shaders
+	log.Println("Started creating shaders")
+	if err := r.createProgram(); err != nil {
+		return nil, err
+	}
+	log.Println("Finished creating shaders")
+
+	// Geometry
+	log.Println("Started creating geometry")
+	r.createGeometry()
+	log.Println("Finished creating geometry")
+
+	return r, nil
+}
+
+func (r *Renderer) framebufferCreate() error {
 	log.Println("rendered w=%d h=%d\n", r.Width, r.Height)
 
 	// Create swapchain for each framebuffer
@@ -802,7 +791,7 @@ func rendererCreate(vrApp *App) *Renderer {
 			vrapi.TEXTURE_TYPE_2D, gl.RGBA8, f.Width, f.Height, 1, 3)
 		if f.ColorTextureSwapChain == nil {
 			log.Printf("egl error %+v", eglError(int(C.eglGetError())))
-			panic("Cant get color texture swap chain")
+			return fmt.Errorf("Cant get color texture swap chain")
 		}
 
 		f.SwapChainLength = vrctx.GetTextureSwapChainLength(f.ColorTextureSwapChain)
@@ -813,13 +802,15 @@ func rendererCreate(vrApp *App) *Renderer {
 			f.ColorTexture = append(f.ColorTexture, gl.Texture{handle})
 		}
 
+		r.initializeFramebuffer(f)
 		r.Framebuffers = append(r.Framebuffers, f)
 	}
-	return r
+
+	return nil
 }
 
-func (r *Renderer) FramebufferCreate(f *Framebuffer) *Framebuffer {
-	// Create depth renderbuffers and framebuffers
+func (r *Renderer) initializeFramebuffer(f *Framebuffer) *Framebuffer {
+	// Create depth renderbuffers and framebuffers.
 	for i := 0; i < f.SwapChainLength; i++ {
 		log.Printf("renderbuffs%+v ctx%+v", glctx, glctx)
 		f.Renderbuffers = append(f.Renderbuffers, glctx.CreateRenderbuffer())
@@ -906,7 +897,6 @@ func main() {
 		vrApp := &App{AndroidApp: a, FloorHeight: -1.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
-		time.Sleep(1 * time.Second)
 		log.Println("After init gl")
 
 		// Init vr api
