@@ -78,6 +78,7 @@ import (
 )
 
 var glctx gl.Context
+var vrctx vrapi.Context
 
 func initGL() (gl.Context, gl.Worker) {
 
@@ -115,14 +116,16 @@ func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 		appEnterVRMode(vrApp)
 
 		// Init gl
-		vrctx, vrWorker := vrapi.NewContext()
+		vrcontext, vrWorker := vrapi.NewContext()
 		vrApp.GL, vrApp.Worker = initGL()
 		glctx = vrApp.GL
+		vrctx = vrcontext
 
 		log.Println("After entering vr mode")
 
-		r := rendererCreate(vrApp)
 		go func() {
+			r := rendererCreate(vrApp)
+
 			// Init renderer
 			log.Println("Creating renderer")
 			if err := r.rendererGLInit(); err != nil {
@@ -158,6 +161,7 @@ func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 			}
 		}()
 
+		log.Println("Started listening")
 		runtime.LockOSThread()
 		glWork := vrApp.Worker.WorkAvailable()
 		vrWork := vrWorker.WorkAvailable()
@@ -794,18 +798,18 @@ func rendererCreate(vrApp *App) *Renderer {
 		f := &Framebuffer{Width: r.Width, Height: r.Height}
 
 		log.Println("Creating color texture swap chain")
-		f.ColorTextureSwapChain = vrapi.CreateTextureSwapChain3(
+		f.ColorTextureSwapChain = vrctx.CreateTextureSwapChain3(
 			vrapi.TEXTURE_TYPE_2D, gl.RGBA8, f.Width, f.Height, 1, 3)
 		if f.ColorTextureSwapChain == nil {
 			log.Printf("egl error %+v", eglError(int(C.eglGetError())))
 			panic("Cant get color texture swap chain")
 		}
 
-		f.SwapChainLength = vrapi.GetTextureSwapChainLength(f.ColorTextureSwapChain)
+		f.SwapChainLength = vrctx.GetTextureSwapChainLength(f.ColorTextureSwapChain)
 		log.Printf("Length of SwapChain %d\n", f.SwapChainLength)
 
 		for i := 0; i < f.SwapChainLength; i++ {
-			handle := vrapi.GetTextureSwapChainHandle(f.ColorTextureSwapChain, i)
+			handle := vrctx.GetTextureSwapChainHandle(f.ColorTextureSwapChain, i)
 			f.ColorTexture = append(f.ColorTexture, gl.Texture{handle})
 		}
 
