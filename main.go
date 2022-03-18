@@ -69,11 +69,6 @@ func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 		params := vrapi.DefaultInitParms(vrApp.Java)
 		fmt.Printf("params %+v\n", params)
 
-		// Initialize api
-		if err := vrapi.Initialize(&params); err != nil {
-			return err
-		}
-
 		// Init egl
 		var err error
 		log.Println("Initializing egl")
@@ -81,9 +76,6 @@ func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 		if err != nil {
 			return err
 		}
-
-		// Enter VRMode
-		appEnterVRMode(vrApp)
 
 		// Init gl
 		vrcontext, vrWorker := vrapi.NewContext()
@@ -94,6 +86,11 @@ func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
 		log.Println("After entering vr mode")
 
 		go func() {
+			if err := vrctx.Initialize(&params); err != nil {
+				panic(err)
+			}
+			appEnterVRMode(vrApp)
+
 			log.Println("Creating renderer")
 			r, err := rendererCreate(vrApp)
 			if err != nil {
@@ -877,7 +874,8 @@ func appEnterVRMode(vrApp *App) {
 		modeParams.WindowSurface = uint64(uintptr(unsafe.Pointer(app.Window)))
 		modeParams.ShareContext = uint64(uintptr(vrApp.EGL.Context))
 
-		vrApp.OVR = vrapi.EnterVrMode(&modeParams)
+		vrApp.OVR = vrctx.EnterVrMode(&modeParams)
+		//vrApp.OVR = vrapi.EnterVrMode(&modeParams)
 		log.Println("Is OVR nil???")
 		log.Println(vrApp)
 	}
