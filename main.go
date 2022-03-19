@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
-	"runtime"
+	"time"
 	"unsafe"
 
 	//"github.com/go-gl/gl/v2.1/gl"
@@ -50,94 +50,50 @@ import (
 var glctx gl.Context
 var vrctx vrapi.Context
 
-func initGL() (gl.Context, gl.Worker) {
+func runApp(vrApp *App) error {
+	// Default params
+	params := vrapi.DefaultInitParms(vrApp.Java)
+	fmt.Printf("params %+v\n", params)
 
-	log.Println("Initializing gl")
-	glc, worker := gl.NewContext()
-
-	return glc, worker
-}
-
-func initVRAPI(vrApp *App) func(vm, jniEnv, ctx uintptr) error {
-	return func(vm, jniEnv, ctx uintptr) error {
-		// Initialize gl and vrapi context
-
-		java := vrapi.CreateJavaObject(vm, jniEnv, ctx)
-		vrApp.Java = &java
-
-		// Default params
-		params := vrapi.DefaultInitParms(vrApp.Java)
-		fmt.Printf("params %+v\n", params)
-
-		// Init egl
-		var err error
-		log.Println("Initializing egl")
-		vrApp.EGL, err = createEGL()
-		if err != nil {
-			return err
-		}
-
-		// Init gl
-		vrcontext, vrWorker := vrapi.NewContext()
-		vrApp.GL, vrApp.Worker = initGL()
-		glctx = vrApp.GL
-		vrctx = vrcontext
-
-		log.Println("After entering vr mode")
-
-		go func() {
-			if err := vrctx.Initialize(&params); err != nil {
-				panic(err)
-			}
-			appEnterVRMode(vrApp)
-
-			log.Println("Creating renderer")
-			r, err := rendererCreate(vrApp)
-			if err != nil {
-				panic(err)
-			}
-
-			log.Println("Starting render loop")
-
-			// Render loop
-			for {
-				vrApp.FrameIndex++
-
-				displayTime := vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
-				tracking := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
-
-				layer := r.Render(tracking, displayTime)
-				frame := &vrapi.OVRSubmitFrameDescription2{
-					SwapInterval: 1,
-					FrameIndex:   uint64(vrApp.FrameIndex),
-					DisplayTime:  displayTime,
-					LayerCount:   1,
-					Layers:       []*vrapi.OVRLayerHeader2{&layer.Header},
-					//Layers:       [1]*vrapi.OVRLayerHeader2{header},
-				}
-
-				vrctx.SubmitFrame2(vrApp.OVR, frame)
-				if err := handleInput(vrApp, displayTime); err != nil {
-					panic(err) // TODO
-				}
-			}
-		}()
-
-		log.Println("Started listening")
-		runtime.LockOSThread()
-		glWork := vrApp.Worker.WorkAvailable()
-		vrWork := vrWorker.WorkAvailable()
-		for {
-			select {
-			case <-glWork:
-				vrApp.Worker.DoWork()
-			case <-vrWork:
-				vrWorker.DoWork()
-			}
-		}
-
-		return nil
+	log.Println("After entering vr mode")
+	if err := vrctx.Initialize(&params); err != nil {
+		panic(err)
 	}
+	appEnterVRMode(vrApp)
+
+	log.Println("Creating renderer")
+	r, err := rendererCreate(vrApp)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Println("Starting render loop")
+
+	// Render loop
+	for {
+		log.Println("FRAME")
+		vrApp.FrameIndex++
+
+		displayTime := vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
+		tracking := vrapi.GetPredictedTracking2(vrApp.OVR, displayTime)
+
+		layer := r.Render(tracking, displayTime)
+		frame := &vrapi.OVRSubmitFrameDescription2{
+			SwapInterval: 1,
+			FrameIndex:   uint64(vrApp.FrameIndex),
+			DisplayTime:  displayTime,
+			LayerCount:   1,
+			Layers:       []*vrapi.OVRLayerHeader2{&layer.Header},
+			//Layers:       [1]*vrapi.OVRLayerHeader2{header},
+		}
+
+		vrctx.SubmitFrame2(vrApp.OVR, frame)
+		if err := handleInput(vrApp, displayTime); err != nil {
+			panic(err) // TODO
+		}
+	}
+
+	return nil
 }
 
 func handleInput(vrApp *App, displayTime float64) error {
@@ -613,7 +569,6 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		glctx.Scissor(0, 0, int32(f.Width), int32(f.Height))
 		glctx.ClearColor(0.15, 0.15, 0.15, 1.0)
 		glctx.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-
 		{ // Per frame uniforms
 			posX, posY, posZ := view[12], view[13], view[14] // Get camera position
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view[:])
@@ -652,7 +607,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		for i := 0; i < 2; i++ { // Hands(s)
 			// Select parameters based on which hand.
 			pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
-			col := []float32{0.3, 0.5, 0.3}
+			col := []float32{0.5, 0.5, 0.3}
 			if i == 0 {
 				pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
 				col = []float32{0.3, 0.3, 0.5}
@@ -895,17 +850,72 @@ func main() {
 		vrApp := &App{AndroidApp: a, FloorHeight: -1.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
+		//
 		log.Println("After init gl")
 
 		// Init vr api
 		log.Println("Initializing vrapi")
 
-		go func() {
-			err := app.RunOnJVM(initVRAPI(vrApp))
+		/*/
+		// Setup egl and java object.
+		err := app.RunOnJVM(func(vm, jniEnv, ctx uintptr) error {
+			java := vrapi.CreateJavaObject(vm, jniEnv, ctx)
+			vrApp.Java = &java
+
+			// Init egl
+			var err error
+			log.Println("Initializing egl")
+			vrApp.EGL, err = createEGL()
+			return err
+		})
+		if err != nil {
+			panic(err)
+		}
+		*/
+
+		log.Println("POST EGL")
+
+		time.Sleep(2 * time.Second)
+
+		log.Println("POST VRAPP")
+
+		log.Println("POST EGL")
+
+		// Host vr and gl workers on mainthread.
+		go app.RunOnJVM(func(vm, jniEnv, ctx uintptr) error {
+			java := vrapi.CreateJavaObject(vm, jniEnv, ctx)
+			vrApp.Java = &java
+
+			// Init egl
+			var err error
+			log.Println("Initializing egl")
+			vrApp.EGL, err = createEGL()
 			if err != nil {
-				panic(err)
+				return err
 			}
-		}()
+
+			vrcontext, vrWorker := vrapi.NewContext()
+			glcontext, glWorker := gl.NewContext()
+			glctx, vrctx = glcontext, vrcontext
+
+			go runApp(vrApp)
+
+			log.Println("Started listening for work")
+			glWork := glWorker.WorkAvailable()
+			vrWork := vrWorker.WorkAvailable()
+			//runtime.LockOSThread()
+			for {
+				select {
+				case <-glWork:
+					glWorker.DoWork()
+				case <-vrWork:
+					log.Println("Got VR WORK")
+					vrWorker.DoWork()
+				}
+			}
+		})
+
+		go runApp(vrApp) //
 
 		log.Println("Starting")
 		for e := range a.Events() {
