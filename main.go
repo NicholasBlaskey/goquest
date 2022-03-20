@@ -343,14 +343,24 @@ type Renderer struct {
 	Height       int
 	Framebuffers []*Framebuffer
 	Program      *Program
-	Geometry     *Geometry
-	GeometryCube *Geometry
+	Heart        *Geometry
+	Cube         *Geometry
 }
 
 type Geometry struct {
 	VertexArray  gl.VertexArray
 	VertexBuffer gl.Buffer
 	IndexBuffer  gl.Buffer
+	N            int
+}
+
+func (g *Geometry) Draw() {
+	// TODO
+	// if indice != nil {
+	// index buffer
+
+	glctx.BindVertexArray(g.VertexArray)
+	glctx.DrawArrays(gl.TRIANGLES, 0, g.N)
 }
 
 type Program struct {
@@ -365,84 +375,36 @@ func toByteSlice(s []uint16) []byte {
 	return *(*[]byte)(unsafe.Pointer(h))
 }
 
+func makeGeometry(verts []float32, indices []float32) *Geometry {
+	g := &Geometry{N: len(verts) / 9} // TODO don't hard code attribs
+	g.VertexArray = glctx.CreateVertexArray()
+	glctx.BindVertexArray(g.VertexArray)
+
+	g.VertexBuffer = glctx.CreateBuffer()
+	glctx.BindBuffer(gl.ARRAY_BUFFER, g.VertexBuffer)
+	glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, verts...),
+		gl.STATIC_DRAW)
+
+	// TODO
+	// if indices != nil {
+	// index buffer
+
+	pos := gl.Attrib{Value: 0}
+	glctx.EnableVertexAttribArray(pos)
+	glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
+	col := gl.Attrib{Value: 1}
+	glctx.EnableVertexAttribArray(col)
+	glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
+	norm := gl.Attrib{Value: 2}
+	glctx.EnableVertexAttribArray(norm)
+	glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
+
+	return g
+}
+
 func (r *Renderer) createGeometry() {
-	/*
-		vertices := []float32{
-			-1.0, +1.0, -1.0, 1.0, 0.0, 1.0,
-			+1.0, +1.0, -1.0, 0.0, 1.0, 0.0,
-			+1.0, +1.0, +1.0, 0.0, 0.0, 1.0,
-			-1.0, +1.0, +1.0, 1.0, 0.0, 0.0,
-			-1.0, -1.0, -1.0, 0.0, 0.0, 1.0,
-			-1.0, -1.0, +1.0, 0.0, 1.0, 0.0,
-			+1.0, -1.0, +1.0, 1.0, 0.0, 1.0,
-			+1.0, -1.0, -1.0, 1.0, 0.0, 0.0,
-		}
-		indices := []uint16{
-			0, 2, 1, 2, 0, 3,
-			4, 6, 5, 6, 4, 7,
-			2, 6, 7, 7, 1, 2,
-			0, 4, 5, 5, 3, 0,
-			3, 5, 6, 6, 2, 3,
-			0, 1, 7, 7, 4, 0,
-		}
-	*/
-
-	// Heart
-	{
-		vertices := heartVerts
-		r.Geometry = &Geometry{}
-		log.Println("Bind here!?!?!?")
-		r.Geometry.VertexArray = glctx.CreateVertexArray()
-		log.Println("Post create?")
-		glctx.BindVertexArray(r.Geometry.VertexArray)
-		log.Println("Post bind?")
-
-		log.Println("VertexBuffer")
-		r.Geometry.VertexBuffer = glctx.CreateBuffer()
-		glctx.BindBuffer(gl.ARRAY_BUFFER, r.Geometry.VertexBuffer)
-		glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
-			gl.STATIC_DRAW)
-
-		log.Println("attribs")
-		pos := gl.Attrib{Value: 0}
-		glctx.EnableVertexAttribArray(pos)
-		glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
-		col := gl.Attrib{Value: 1}
-		glctx.EnableVertexAttribArray(col)
-		glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
-		norm := gl.Attrib{Value: 2}
-		glctx.EnableVertexAttribArray(norm)
-		glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
-	}
-
-	// Cube
-	{
-		vertices := cubeVerts
-		r.GeometryCube = &Geometry{}
-		log.Println("Bind here!?!?!?")
-		r.GeometryCube.VertexArray = glctx.CreateVertexArray()
-		log.Println("Post create?")
-		glctx.BindVertexArray(r.GeometryCube.VertexArray)
-		log.Println("Post bind?")
-
-		log.Println("VertexBuffer")
-		r.GeometryCube.VertexBuffer = glctx.CreateBuffer()
-		glctx.BindBuffer(gl.ARRAY_BUFFER, r.GeometryCube.VertexBuffer)
-		glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, vertices...),
-			gl.STATIC_DRAW)
-
-		log.Println("attribs")
-		pos := gl.Attrib{Value: 0}
-		glctx.EnableVertexAttribArray(pos)
-		glctx.VertexAttribPointer(pos, 3, gl.FLOAT, false, 4*9, 0)
-		col := gl.Attrib{Value: 1}
-		glctx.EnableVertexAttribArray(col)
-		glctx.VertexAttribPointer(col, 3, gl.FLOAT, false, 4*9, 4*3)
-		norm := gl.Attrib{Value: 2}
-		glctx.EnableVertexAttribArray(norm)
-		glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
-	}
-
+	r.Heart = makeGeometry(heartVerts, nil)
+	r.Cube = makeGeometry(cubeVerts, nil)
 }
 
 const vertexShader = `
@@ -584,8 +546,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
-			glctx.BindVertexArray(r.Geometry.VertexArray)
-			glctx.DrawArrays(gl.TRIANGLES, 0, len(heartVerts)/9)
+			r.Heart.Draw()
 		}
 
 		{ // Floor
@@ -598,8 +559,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
-			glctx.BindVertexArray(r.GeometryCube.VertexArray)
-			glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+			r.Cube.Draw()
 		}
 
 		for i := 0; i < 2; i++ { // Hands(s)
@@ -627,8 +587,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 
-				glctx.BindVertexArray(r.GeometryCube.VertexArray)
-				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+				r.Cube.Draw()
 			}
 
 			{ // Blade part of sword
@@ -642,8 +601,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 
-				glctx.BindVertexArray(r.GeometryCube.VertexArray)
-				glctx.DrawArrays(gl.TRIANGLES, 0, len(cubeVerts)/9)
+				r.Cube.Draw()
 			}
 		}
 
