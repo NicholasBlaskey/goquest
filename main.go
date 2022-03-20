@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
-	"time"
+	"runtime"
 	"unsafe"
 
 	//"github.com/go-gl/gl/v2.1/gl"
@@ -71,7 +71,6 @@ func runApp(vrApp *App) error {
 
 	// Render loop
 	for {
-		log.Println("FRAME")
 		vrApp.FrameIndex++
 
 		displayTime := vrapi.GetPredictedDisplayTime(vrApp.OVR, vrApp.FrameIndex)
@@ -84,7 +83,6 @@ func runApp(vrApp *App) error {
 			DisplayTime:  displayTime,
 			LayerCount:   1,
 			Layers:       []*vrapi.OVRLayerHeader2{&layer.Header},
-			//Layers:       [1]*vrapi.OVRLayerHeader2{header},
 		}
 
 		vrctx.SubmitFrame2(vrApp.OVR, frame)
@@ -850,38 +848,11 @@ func main() {
 		vrApp := &App{AndroidApp: a, FloorHeight: -1.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
-		//
-		log.Println("After init gl")
-
-		// Init vr api
-		log.Println("Initializing vrapi")
-
-		/*/
-		// Setup egl and java object.
-		err := app.RunOnJVM(func(vm, jniEnv, ctx uintptr) error {
-			java := vrapi.CreateJavaObject(vm, jniEnv, ctx)
-			vrApp.Java = &java
-
-			// Init egl
-			var err error
-			log.Println("Initializing egl")
-			vrApp.EGL, err = createEGL()
-			return err
-		})
-		if err != nil {
-			panic(err)
-		}
-		*/
-
-		log.Println("POST EGL")
-
-		time.Sleep(2 * time.Second)
-
-		log.Println("POST VRAPP")
-
-		log.Println("POST EGL")
-
 		// Host vr and gl workers on mainthread.
+		// TODO get rid of this EGL initialize and use the gomobile
+		// initialize egl. (only issue is of course it has to be called from
+		// the same thread?)
+		waitForEGL := make(chan struct{})
 		go app.RunOnJVM(func(vm, jniEnv, ctx uintptr) error {
 			java := vrapi.CreateJavaObject(vm, jniEnv, ctx)
 			vrApp.Java = &java
@@ -898,23 +869,25 @@ func main() {
 			glcontext, glWorker := gl.NewContext()
 			glctx, vrctx = glcontext, vrcontext
 
-			go runApp(vrApp)
+			//go runApp(vrApp)
 
 			log.Println("Started listening for work")
 			glWork := glWorker.WorkAvailable()
 			vrWork := vrWorker.WorkAvailable()
-			//runtime.LockOSThread()
+
+			waitForEGL <- struct{}{}
+			runtime.LockOSThread()
 			for {
 				select {
 				case <-glWork:
 					glWorker.DoWork()
 				case <-vrWork:
-					log.Println("Got VR WORK")
 					vrWorker.DoWork()
 				}
 			}
 		})
 
+		<-waitForEGL
 		go runApp(vrApp) //
 
 		log.Println("Starting")
