@@ -356,12 +356,13 @@ type Geometry struct {
 }
 
 func (g *Geometry) Draw() {
+	glctx.BindVertexArray(g.VertexArray)
 	if g.IndexBuffer.Value > 0 {
+		//log.Println("Drawing sphere", g.N)
 		glctx.DrawElements(gl.TRIANGLE_STRIP, g.N, gl.UNSIGNED_SHORT, 0)
 		return
 	}
 
-	glctx.BindVertexArray(g.VertexArray)
 	glctx.DrawArrays(gl.TRIANGLES, 0, g.N)
 }
 
@@ -397,7 +398,7 @@ func makeGeometry(verts []float32, indices []uint16) *Geometry {
 	glctx.EnableVertexAttribArray(norm)
 	glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
 
-	if indices != nil && false {
+	if indices != nil {
 		g.IndexBuffer = glctx.CreateBuffer()
 		g.N = len(indices)
 		glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.IndexBuffer)
@@ -557,7 +558,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		}
 
 		{ // Sphere
-			model := mgl.Translate3D(+0.5, 0.0, -0.3)
+			model := mgl.Translate3D(-.40, 0.0, +1.2)
 			scaleAmount := float32(0.5)
 			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
 			normal := model.Inv().Transpose()

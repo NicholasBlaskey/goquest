@@ -46,9 +46,9 @@ func makeSphereVerts(n int) ([]float32, []uint16) {
 				)
 			}
 		} else {
-			for x := n; n >= 0; n-- {
+			for x := n; x >= 0; x-- {
 				indices = append(indices,
-					uint16(y*(n+1)+x), uint16(y*(n+1)+x),
+					uint16((y+1)*(n+1)+x), uint16(y*(n+1)+x),
 				)
 			}
 		}
