@@ -345,6 +345,7 @@ type Renderer struct {
 	Program      *Program
 	Heart        *Geometry
 	Cube         *Geometry
+	Sphere       *Geometry
 }
 
 type Geometry struct {
@@ -355,9 +356,10 @@ type Geometry struct {
 }
 
 func (g *Geometry) Draw() {
-	// TODO
-	// if indice != nil {
-	// index buffer
+	if g.IndexBuffer.Value > 0 {
+		glctx.DrawElements(gl.TRIANGLE_STRIP, g.N, gl.UNSIGNED_SHORT, 0)
+		return
+	}
 
 	glctx.BindVertexArray(g.VertexArray)
 	glctx.DrawArrays(gl.TRIANGLES, 0, g.N)
@@ -375,7 +377,7 @@ func toByteSlice(s []uint16) []byte {
 	return *(*[]byte)(unsafe.Pointer(h))
 }
 
-func makeGeometry(verts []float32, indices []float32) *Geometry {
+func makeGeometry(verts []float32, indices []uint16) *Geometry {
 	g := &Geometry{N: len(verts) / 9} // TODO don't hard code attribs
 	g.VertexArray = glctx.CreateVertexArray()
 	glctx.BindVertexArray(g.VertexArray)
@@ -384,10 +386,6 @@ func makeGeometry(verts []float32, indices []float32) *Geometry {
 	glctx.BindBuffer(gl.ARRAY_BUFFER, g.VertexBuffer)
 	glctx.BufferData(gl.ARRAY_BUFFER, f32.Bytes(binary.LittleEndian, verts...),
 		gl.STATIC_DRAW)
-
-	// TODO
-	// if indices != nil {
-	// index buffer
 
 	pos := gl.Attrib{Value: 0}
 	glctx.EnableVertexAttribArray(pos)
@@ -399,12 +397,21 @@ func makeGeometry(verts []float32, indices []float32) *Geometry {
 	glctx.EnableVertexAttribArray(norm)
 	glctx.VertexAttribPointer(norm, 3, gl.FLOAT, false, 4*9, 4*6)
 
+	if indices != nil && false {
+		g.IndexBuffer = glctx.CreateBuffer()
+		g.N = len(indices)
+		glctx.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.IndexBuffer)
+		glctx.BufferData(gl.ELEMENT_ARRAY_BUFFER, toByteSlice(indices),
+			gl.STATIC_DRAW)
+	}
+
 	return g
 }
 
 func (r *Renderer) createGeometry() {
 	r.Heart = makeGeometry(heartVerts, nil)
 	r.Cube = makeGeometry(cubeVerts, nil)
+	r.Sphere = makeGeometry(makeSphereVerts(32))
 }
 
 const vertexShader = `
@@ -547,6 +554,19 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
 			r.Heart.Draw()
+		}
+
+		{ // Sphere
+			model := mgl.Translate3D(+0.5, 0.0, -0.3)
+			scaleAmount := float32(0.5)
+			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+			normal := model.Inv().Transpose()
+
+			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
+
+			r.Sphere.Draw()
 		}
 
 		{ // Floor
