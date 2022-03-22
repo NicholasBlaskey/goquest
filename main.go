@@ -349,6 +349,7 @@ type Renderer struct {
 	Heart        *Geometry
 	Cube         *Geometry
 	Sphere       *Geometry
+	Spheres      []*Sphere
 }
 
 type Geometry struct {
@@ -356,6 +357,16 @@ type Geometry struct {
 	VertexBuffer gl.Buffer
 	IndexBuffer  gl.Buffer
 	N            int
+}
+
+type Sphere struct {
+	Model                   mgl.Mat4
+	IntersectsWithLeftHand  bool
+	IntersectsWithRightHand bool
+}
+
+func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRight bool) {
+
 }
 
 func (g *Geometry) Draw() {
@@ -560,19 +571,6 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			r.Heart.Draw()
 		}
 
-		{ // Sphere
-			model := mgl.Translate3D(-.40, 0.0, +1.2)
-			scaleAmount := float32(0.5)
-			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
-			normal := model.Inv().Transpose()
-
-			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
-			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
-			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
-
-			r.Sphere.Draw()
-		}
-
 		{ // Floor
 			model := mgl.Translate3D(0.0, r.VRApp.FloorHeight, 0.0)
 			//model.Mul4(mgl.HomogRotate3D
@@ -636,6 +634,36 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 				r.Cube.Draw()
 			}
+
+			for _, s := range r.Spheres {
+				s.HandIntersect(pos, orient, i == 0)
+				s.HandIntersect(pos, orient, i == 1)
+			}
+		}
+
+		{ // Spheres
+			for _, s := range r.Spheres {
+				model := s.Model
+				normal := model.Inv().Transpose()
+
+				if s.IntersectsWithLeftHand && s.IntersectsWithRightHand {
+
+				} else if s.IntersectsWithLeftHand {
+
+				} else if s.IntersectsWithRightHand {
+
+				} else {
+					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+
+				}
+
+				//glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
+
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
+
+				r.Sphere.Draw()
+			}
 		}
 
 		// Cleanup
@@ -646,9 +674,6 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 		f.SwapChainIndex = (f.SwapChainIndex + 1) % int32(f.SwapChainLength)
 	}
-
-	// TWO
-	//layer := *(*C.ovrLayerProjection2)(unsafe.Pointer(&newLayer))
 
 	return layer
 }
@@ -663,33 +688,6 @@ type Framebuffer struct {
 	Renderbuffers         []gl.Renderbuffer
 	Framebuffers          []gl.Framebuffer
 }
-
-/*
-func (r *Renderer) rendererGLInit() error {
-	// Framebuffers
-	for i := 0; i < vrapi.FRAME_LAYER_EYE_MAX; i++ {
-		r.FramebufferCreate(r.Framebuffers[i])
-		log.Printf("Buffer create %d\n", i)
-
-		// TODO swap to append once we figure out the thread stuff.
-		//r.Framebuffers = append(r.Framebuffers, r.FramebufferCreate())
-	}
-
-	// Shaders
-	log.Println("Started creating shaders")
-	if err := r.createProgram(); err != nil {
-		return err
-	}
-	log.Println("Finished creating shaders")
-
-	// Geometry
-	log.Println("Started creating geometry")
-	r.createGeometry()
-	log.Println("Finished creating geometry")
-
-	return nil
-}
-*/
 
 // This needs to run on the mainthread, for
 // vrapi_GetTextureSwapChain stuff
@@ -716,6 +714,14 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 	log.Println("Started creating geometry")
 	r.createGeometry()
 	log.Println("Finished creating geometry")
+
+	// Create geometry objects (TODO maybe better as vrApp but we will see)
+	{
+		model := mgl.Translate3D(0.0, 1.0, 0.0)
+		scaleAmount := float32(0.5)
+		model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+		r.Spheres = append(r.Spheres, &Sphere{Model: model})
+	}
 
 	return r, nil
 }
