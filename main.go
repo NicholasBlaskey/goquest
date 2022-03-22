@@ -95,6 +95,9 @@ func runApp(vrApp *App) error {
 }
 
 func handleInput(vrApp *App, displayTime float64) error {
+	vrApp.HandPosLeft, vrApp.OrientationLeft = nil, nil
+	vrApp.HandPosRight, vrApp.OrientationRight = nil, nil
+
 	i := uint32(0)
 	var capability vrapi.OVRInputCapabilityHeader
 	for vrapi.EnumerateInputDevices(vrApp.OVR, i, &capability) >= 0 {
@@ -136,11 +139,11 @@ func handleInput(vrApp *App, displayTime float64) error {
 
 			// Update game state.
 			if isLeft {
-				vrApp.HandPosLeft = inputState.GripPose.Position
-				vrApp.OrientationLeft = inputState.GripPose.Orientation
+				vrApp.HandPosLeft = &inputState.GripPose.Position
+				vrApp.OrientationLeft = &inputState.GripPose.Orientation
 			} else {
-				vrApp.HandPosRight = inputState.GripPose.Position
-				vrApp.OrientationRight = inputState.GripPose.Orientation
+				vrApp.HandPosRight = &inputState.GripPose.Position
+				vrApp.OrientationRight = &inputState.GripPose.Orientation
 			}
 		default:
 			//log.Printf("Unrecognized input device %+v", capability)
@@ -584,17 +587,26 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		}
 
 		for i := 0; i < 2; i++ { // Hands(s)
-			// Select parameters based on which hand.
-			pos, orient := r.VRApp.HandPosLeft, r.VRApp.OrientationLeft
-			col := []float32{0.5, 0.5, 0.3}
-			if i == 0 {
-				pos, orient = r.VRApp.HandPosRight, r.VRApp.OrientationRight
-				col = []float32{0.3, 0.3, 0.5}
+			var pos, col mgl.Vec3
+			var orient mgl.Quat
+
+			// Right
+			if i == 0 && r.VRApp.HandPosRight == nil {
+				continue
+			} else if i == 0 {
+				pos, orient = *r.VRApp.HandPosRight, *r.VRApp.OrientationRight
+				col = mgl.Vec3{0.3, 0.3, 0.5}
 			}
-			rot := mgl.Ident4()
-			if orient != (mgl.Quat{}) {
-				rot = orient.Mat4()
+
+			// Left
+			if i == 1 && r.VRApp.HandPosLeft == nil {
+				continue
+			} else if i == 1 {
+				pos, orient = *r.VRApp.HandPosLeft, *r.VRApp.OrientationLeft
+				col = mgl.Vec3{0.5, 0.5, 0.3}
 			}
+
+			rot := orient.Mat4()
 
 			glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
 			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
@@ -787,10 +799,10 @@ type App struct {
 	Worker      gl.Worker
 	FloorHeight float32
 	//
-	OrientationLeft  mgl.Quat
-	HandPosLeft      mgl.Vec3
-	OrientationRight mgl.Quat
-	HandPosRight     mgl.Vec3
+	OrientationLeft  *mgl.Quat
+	HandPosLeft      *mgl.Vec3
+	OrientationRight *mgl.Quat
+	HandPosRight     *mgl.Vec3
 }
 
 func appEnterVRMode(vrApp *App) {

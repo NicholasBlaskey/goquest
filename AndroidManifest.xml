@@ -3,11 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.golang.todo.gorift"
     android:versionCode="1"
-    android:versionName="1.0">
-
-  <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
-  <uses-feature android:name="oculus.software.handtracking" android:required="true" />
-  
+    android:versionName="1.0">  
 
   <application android:label="Gorift" android:debuggable="true">
     <activity android:name="org.golang.app.GoNativeActivity"
