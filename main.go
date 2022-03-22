@@ -50,6 +50,9 @@ import (
 var glctx gl.Context
 var vrctx vrapi.Context
 
+var rightHandCol mgl.Vec3 = mgl.Vec3{0.3, 0.3, 0.5}
+var leftHandCol mgl.Vec3 = mgl.Vec3{0.5, 0.5, 0.3}
+
 func runApp(vrApp *App) error {
 	// Default params
 	params := vrapi.DefaultInitParms(vrApp.Java)
@@ -366,7 +369,17 @@ type Sphere struct {
 }
 
 func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRight bool) {
+	// "Center sphere" at 0, 0 with radius = 1 by moving hand
+	hand := handPos.Vec4(1.0)
+	hand = s.Model.Inv().Mul4x1(hand)
+	distToCenter := hand.Vec3().Len() // No need to sub by center since it is (0.0, 0.0, 0.0)
 
+	intersects := distToCenter <= 1.0
+	if leftOrRight {
+		s.IntersectsWithLeftHand = intersects
+	} else {
+		s.IntersectsWithRightHand = intersects
+	}
 }
 
 func (g *Geometry) Draw() {
@@ -593,7 +606,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				continue
 			} else if i == 0 {
 				pos, orient = *r.VRApp.HandPosRight, *r.VRApp.OrientationRight
-				col = mgl.Vec3{0.3, 0.3, 0.5}
+				col = rightHandCol
 			}
 
 			// Left
@@ -601,7 +614,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				continue
 			} else if i == 1 {
 				pos, orient = *r.VRApp.HandPosLeft, *r.VRApp.OrientationLeft
-				col = mgl.Vec3{0.5, 0.5, 0.3}
+				col = leftHandCol
 			}
 
 			rot := orient.Mat4()
@@ -636,8 +649,11 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			}
 
 			for _, s := range r.Spheres {
-				s.HandIntersect(pos, orient, i == 0)
-				s.HandIntersect(pos, orient, i == 1)
+				if i == 0 {
+					s.HandIntersect(pos, orient, false)
+				} else {
+					s.HandIntersect(pos, orient, true)
+				}
 			}
 		}
 
@@ -646,18 +662,21 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				model := s.Model
 				normal := model.Inv().Transpose()
 
-				if s.IntersectsWithLeftHand && s.IntersectsWithRightHand {
-
-				} else if s.IntersectsWithLeftHand {
-
-				} else if s.IntersectsWithRightHand {
-
-				} else {
+				// Set color
+				if !s.IntersectsWithLeftHand && !s.IntersectsWithRightHand {
 					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
-
+				} else {
+					glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
+					var col mgl.Vec3
+					if s.IntersectsWithLeftHand && s.IntersectsWithRightHand {
+						col = leftHandCol.Mul(0.5).Add(rightHandCol.Mul(0.5))
+					} else if s.IntersectsWithLeftHand {
+						col = leftHandCol
+					} else if s.IntersectsWithRightHand { // Always true
+						col = rightHandCol
+					}
+					glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], col[0], col[1], col[2])
 				}
-
-				//glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0) // off
 
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
