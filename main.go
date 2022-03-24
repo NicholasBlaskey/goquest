@@ -382,7 +382,7 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 	*/
 
 	rayPos := s.Model.Inv().Mul4x1(handPos.Vec4(1.0)).Vec3()
-	rayDir := handOrient.Rotate(mgl.Vec3{0.0, 0.0, -1.0})
+	rayDir := handOrient.Rotate(mgl.Vec3{0.0, 0.0, -1.0}).Normalize()
 
 	a := rayDir.Dot(rayDir)
 	b := 2.0 * rayDir.Dot(rayPos)
@@ -391,10 +391,21 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 	disc := b*b - 4*a*c
 
 	//fmt.Println(disc)
-	//t0 := (-b - sqrt(discriminant)) / (2.0 * a)
+	t0 := (-b - sqrt(disc)) / (2.0 * a)
 	t1 := (-b + sqrt(disc)) / (2.0 * a)
 
-	intersects := disc >= 0.0 && t1 >= 0.0
+	// Get lowest non negative time (if there is one)
+	t := t0
+	if t0 < 0.0 {
+		t = t1
+	}
+
+	intersectPoint := rayDir.Mul(t).Add(rayPos)
+	distToPoint := rayPos.Sub(intersectPoint).Len()
+	//log.Println(t0, t1, t, intersectPoint, distToPoint)
+	bladeLen := float32(0.35) * 2 * 2 // * 2 again since we multiply our sphere by 2
+
+	intersects := disc >= 0.0 && t >= 0.0 && distToPoint <= bladeLen //t <= bladeLen
 	if leftOrRight {
 		s.IntersectsWithLeftHand = intersects
 	} else {
