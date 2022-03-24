@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"reflect"
 	"runtime"
 	"unsafe"
@@ -368,13 +369,32 @@ type Sphere struct {
 	IntersectsWithRightHand bool
 }
 
+func sqrt(disc float32) float32 {
+	return float32(math.Sqrt(float64(disc)))
+}
+
 func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRight bool) {
 	// "Center sphere" at 0, 0 with radius = 1 by moving hand
-	hand := handPos.Vec4(1.0)
-	hand = s.Model.Inv().Mul4x1(hand)
-	distToCenter := hand.Vec3().Len() // No need to sub by center since it is (0.0, 0.0, 0.0)
+	/*
+		hand := handPos.Vec4(1.0)
+		hand = s.Model.Inv().Mul4x1(hand)
+		distToCenter := hand.Vec3().Len() // No need to sub by center since it is (0.0, 0.0, 0.0)
+	*/
 
-	intersects := distToCenter <= 1.0
+	rayPos := s.Model.Inv().Mul4x1(handPos.Vec4(1.0)).Vec3()
+	rayDir := handOrient.Rotate(mgl.Vec3{0.0, 0.0, -1.0})
+
+	a := rayDir.Dot(rayDir)
+	b := 2.0 * rayDir.Dot(rayPos)
+	c := rayPos.Dot(rayPos) - 1.0
+
+	disc := b*b - 4*a*c
+
+	//fmt.Println(disc)
+	//t0 := (-b - sqrt(discriminant)) / (2.0 * a)
+	t1 := (-b + sqrt(disc)) / (2.0 * a)
+
+	intersects := disc >= 0.0 && t1 >= 0.0
 	if leftOrRight {
 		s.IntersectsWithLeftHand = intersects
 	} else {
