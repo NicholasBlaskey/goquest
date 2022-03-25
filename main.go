@@ -374,6 +374,8 @@ type Sphere struct {
 	SizeFactor              float32
 	IntersectsWithLeftHand  bool
 	IntersectsWithRightHand bool
+	Velocity                mgl.Vec3
+	Position                mgl.Vec3
 }
 
 func sqrt(disc float32) float32 {
@@ -417,6 +419,21 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 	} else {
 		s.IntersectsWithRightHand = intersects
 	}
+
+	if intersects { // Add a velocity
+		if s.Velocity == (mgl.Vec3{}) {
+			log.Println("Adding velocity")
+			// Flip normal vector to get direction sphere needs to go after intersections.
+			// TODO make this based off predicted display time dt type thing.
+			s.Velocity = intersectPoint.Normalize().Mul(-0.01)
+		}
+	}
+
+	log.Println(s.Position)
+	// Update position
+	s.Position = s.Position.Add(s.Velocity)
+	s.Model = mgl.Translate3D(s.Position[0], s.Position[1], s.Position[2])
+	s.Model = s.Model.Mul4(mgl.Scale3D(s.SizeFactor, s.SizeFactor, s.SizeFactor))
 }
 
 func (g *Geometry) Draw() {
@@ -770,12 +787,41 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 	r.createGeometry()
 	log.Println("Finished creating geometry")
 
-	// Create geometry objects (TODO maybe better as vrApp but we will see)
+	/*
+		// Create geometry objects (TODO maybe better as vrApp but we will see)
+		{
+			model := mgl.Translate3D(0.0, 1.0, 0.0)
+			scaleAmount := float32(0.5)
+			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+			r.Spheres = append(r.Spheres, &Sphere{Model: model, SizeFactor: scaleAmount,
+				Position: mgl.Vec3{0.0, 1.0, 0.0}})
+		}
+	*/
+
+	// Create spheres in a circle
 	{
-		model := mgl.Translate3D(0.0, 1.0, 0.0)
-		scaleAmount := float32(0.5)
-		model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
-		r.Spheres = append(r.Spheres, &Sphere{Model: model, SizeFactor: scaleAmount})
+		distAway := float32(1.5)
+		n := 10
+		for i := 0; i < n; i++ {
+			pi := (2 * math.Pi) / (float32(i) / float32(n))
+			x, z := cos(pi)*distAway, sin(pi)*distAway
+
+			scaleAmount := float32(0.5)
+			pos := mgl.Vec3{x, 0.0, z}
+
+			model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
+				mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+			r.Spheres = append(r.Spheres, &Sphere{Model: model,
+				SizeFactor: scaleAmount, Position: pos})
+		}
+		/*
+
+			model := mgl.Translate3D(0.0, 1.0, 0.0)
+			scaleAmount := float32(0.5)
+			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+			r.Spheres = append(r.Spheres, &Sphere{Model: model, SizeFactor: scaleAmount,
+				Position: mgl.Vec3{0.0, 1.0, 0.0}})
+		*/
 	}
 
 	return r, nil
