@@ -48,6 +48,10 @@ import (
 	"github.com/nicholasblaskey/vrapi/ovrMatrix4f"
 )
 
+const (
+	bladeLength = 0.70
+)
+
 var glctx gl.Context
 var vrctx vrapi.Context
 
@@ -364,7 +368,10 @@ type Geometry struct {
 }
 
 type Sphere struct {
-	Model                   mgl.Mat4
+	Model mgl.Mat4
+	// Need this I think? Its encoded into model already but?
+	// We use this for blade length currently
+	SizeFactor              float32
 	IntersectsWithLeftHand  bool
 	IntersectsWithRightHand bool
 }
@@ -400,12 +407,11 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 		t = t1
 	}
 
+	// Inside outside check???
 	intersectPoint := rayDir.Mul(t).Add(rayPos)
-	distToPoint := rayPos.Sub(intersectPoint).Len()
-	//log.Println(t0, t1, t, intersectPoint, distToPoint)
-	bladeLen := float32(0.35) * 2 * 2 // * 2 again since we multiply our sphere by 2
+	distToPoint := rayPos.Sub(intersectPoint).Len() * s.SizeFactor
 
-	intersects := disc >= 0.0 && t >= 0.0 && distToPoint <= bladeLen //t <= bladeLen
+	intersects := disc >= 0.0 && t >= 0.0 && distToPoint <= bladeLength
 	if leftOrRight {
 		s.IntersectsWithLeftHand = intersects
 	} else {
@@ -666,11 +672,10 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			}
 
 			{ // Blade part of sword
-				bladeLength := float32(0.35)
-				v := rot.Mul4x1(mgl.Vec4{0.0, 0.0, -bladeLength, 0.0}).Vec3().Add(pos)
+				v := rot.Mul4x1(mgl.Vec4{0.0, 0.0, -bladeLength / 2.0, 0.0}).Vec3().Add(pos)
 				model := mgl.Translate3D(v[0], v[1], v[2])
 				model = model.Mul4(rot)
-				model = model.Mul4(mgl.Scale3D(0.01, 0.01, bladeLength*2))
+				model = model.Mul4(mgl.Scale3D(0.01, 0.01, bladeLength))
 				normal := model.Inv().Transpose()
 
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
@@ -770,7 +775,7 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 		model := mgl.Translate3D(0.0, 1.0, 0.0)
 		scaleAmount := float32(0.5)
 		model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
-		r.Spheres = append(r.Spheres, &Sphere{Model: model})
+		r.Spheres = append(r.Spheres, &Sphere{Model: model, SizeFactor: scaleAmount})
 	}
 
 	return r, nil
