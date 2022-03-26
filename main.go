@@ -371,11 +371,12 @@ type Sphere struct {
 	Model mgl.Mat4
 	// Need this I think? Its encoded into model already but?
 	// We use this for blade length currently
-	SizeFactor              float32
-	IntersectsWithLeftHand  bool
-	IntersectsWithRightHand bool
-	Velocity                mgl.Vec3
-	Position                mgl.Vec3
+	Radius                   float32
+	IntersectsWithLeftHand   bool
+	IntersectsWithRightHand  bool
+	Velocity                 mgl.Vec3
+	Position                 mgl.Vec3
+	FramesSinceLastIntersect int
 }
 
 func sqrt(disc float32) float32 {
@@ -411,7 +412,7 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 
 	// Inside outside check???
 	intersectPoint := rayDir.Mul(t).Add(rayPos)
-	distToPoint := rayPos.Sub(intersectPoint).Len() * s.SizeFactor
+	distToPoint := rayPos.Sub(intersectPoint).Len() * s.Radius
 
 	intersects := disc >= 0.0 && t >= 0.0 && distToPoint <= bladeLength
 	if leftOrRight {
@@ -420,20 +421,46 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 		s.IntersectsWithRightHand = intersects
 	}
 
+	s.FramesSinceLastIntersect++
 	if intersects { // Add a velocity
-		if s.Velocity == (mgl.Vec3{}) {
+		//if s.Velocity == (mgl.Vec3{}) {
+		if s.FramesSinceLastIntersect > 5 {
 			log.Println("Adding velocity")
 			// Flip normal vector to get direction sphere needs to go after intersections.
 			// TODO make this based off predicted display time dt type thing.
 			s.Velocity = intersectPoint.Normalize().Mul(-0.01)
 		}
+
+		s.FramesSinceLastIntersect = 0
 	}
 
-	log.Println(s.Position)
-	// Update position
+	// Update position (move this outside of this hand check)
 	s.Position = s.Position.Add(s.Velocity)
 	s.Model = mgl.Translate3D(s.Position[0], s.Position[1], s.Position[2])
-	s.Model = s.Model.Mul4(mgl.Scale3D(s.SizeFactor, s.SizeFactor, s.SizeFactor))
+	s.Model = s.Model.Mul4(mgl.Scale3D(s.Radius, s.Radius, s.Radius))
+}
+
+func (s *Sphere) WorldIntersect(vrApp *App) {
+	// TODO do dome
+	// For now do box
+
+	sphereCenter := s.Position
+
+	// Walls
+	if sphereCenter[0] >= 10 || sphereCenter[0] <= -10 ||
+		sphereCenter[1] >= 10 || sphereCenter[1] <= -10 {
+		s.Velocity = s.Velocity.Mul(-1)
+	}
+
+	// Reflect off ceiling???
+	if sphereCenter[1]+s.Radius >= vrApp.FloorHeight+3.0 {
+		s.Velocity = s.Velocity.Mul(-1)
+	}
+
+	// Reflect off floor
+	if sphereCenter[1]-s.Radius <= vrApp.FloorHeight {
+		s.Velocity = s.Velocity.Mul(-1)
+	}
 }
 
 func (g *Geometry) Draw() {
@@ -712,6 +739,8 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 		{ // Spheres
 			for _, s := range r.Spheres {
+				s.WorldIntersect(r.VRApp)
+
 				model := s.Model
 				normal := model.Inv().Transpose()
 
@@ -812,7 +841,7 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 			model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
 				mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
 			r.Spheres = append(r.Spheres, &Sphere{Model: model,
-				SizeFactor: scaleAmount, Position: pos})
+				Radius: scaleAmount, Position: pos})
 		}
 		/*
 
