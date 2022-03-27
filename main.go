@@ -425,7 +425,6 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 	if intersects { // Add a velocity
 		//if s.Velocity == (mgl.Vec3{}) {
 		if s.FramesSinceLastIntersect > 5 {
-			log.Println("Adding velocity")
 			// Flip normal vector to get direction sphere needs to go after intersections.
 			// TODO make this based off predicted display time dt type thing.
 			s.Velocity = intersectPoint.Normalize().Mul(-0.01)
@@ -532,14 +531,20 @@ uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
 uniform mat4 uNormalMatrix;
+uniform int uInside;
 out vec3 vColor;
 out vec3 vNormal;
 out vec3 vFragPos;
 void main() {
 	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition, 1.0)));
 	vColor = aColor;
-	vNormal = vec3(uNormalMatrix * vec4(aNormal, 1.0));
 	vFragPos = vec3(uModelMatrix * vec4(aPosition, 1.0));
+
+	vec3 norm = aNormal;
+	if (uInside == 1) { // || true
+		norm = -norm;
+	}
+	vNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
 }
 `
 
@@ -567,6 +572,9 @@ void main() {
 		}
 	} else if (uUseCheckerBoard == 2) {
 		col = uSolidColor;
+	} else if (uUseCheckerBoard == 3) {
+		outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
+		return;
 	}
 
 	vec3 ambient = 0.25 * col;
@@ -607,7 +615,7 @@ func (r *Renderer) createProgram() error {
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
 	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix",
-		"uNormalMatrix", "uViewPos", "uUseCheckerBoard", "uSolidColor"}
+		"uNormalMatrix", "uViewPos", "uUseCheckerBoard", "uSolidColor", "uInside"}
 	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
@@ -649,7 +657,10 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			posX, posY, posZ := view[12], view[13], view[14] // Get camera position
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uViewMatrix"], view[:])
 			glctx.UniformMatrix4fv(r.Program.UniformLocations["uProjectionMatrix"], projection[:])
-			glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ)
+
+			glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], posX, posY, posZ) //
+
+			glctx.Uniform3f(r.Program.UniformLocations["uViewPos"], 0.0, 5.0, 0.0)
 		}
 
 		{ // Heart
@@ -668,7 +679,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		{ // Floor
 			model := mgl.Translate3D(0.0, r.VRApp.FloorHeight, 0.0)
 			//model.Mul4(mgl.HomogRotate3D
-			model = model.Mul4(mgl.Scale3D(10.0, 0.1, 10.0))
+			model = model.Mul4(mgl.Scale3D(r.VRApp.DomeRadius*2.0, 0.1, r.VRApp.DomeRadius*2.0))
 			normal := model.Inv().Transpose()
 
 			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1) // on
@@ -735,6 +746,21 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 					s.HandIntersect(pos, orient, true)
 				}
 			}
+		}
+
+		{ // Dome
+			model := mgl.Scale3D(r.VRApp.DomeRadius, r.VRApp.DomeRadius, r.VRApp.DomeRadius)
+			normal := model.Inv().Transpose()
+
+			glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 1)
+			glctx.Uniform1i(r.Program.UniformLocations["uInside"], 1)
+
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+			glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
+
+			r.Sphere.Draw()
+
+			glctx.Uniform1i(r.Program.UniformLocations["uInside"], 0)
 		}
 
 		{ // Spheres
@@ -934,6 +960,7 @@ type App struct {
 	GL          gl.Context
 	Worker      gl.Worker
 	FloorHeight float32
+	DomeRadius  float32
 	//
 	OrientationLeft  *mgl.Quat
 	HandPosLeft      *mgl.Vec3
@@ -972,7 +999,7 @@ func main() {
 
 	log.Println("Starting main")
 	app.Main(func(a app.App) {
-		vrApp := &App{AndroidApp: a, FloorHeight: -1.0}
+		vrApp := &App{AndroidApp: a, FloorHeight: -1.0, DomeRadius: 10.0}
 		//vrApp.GL.ClearColor(0.0, 0.0, 0.0, 1.0)
 
 		// Host vr and gl workers on mainthread.
