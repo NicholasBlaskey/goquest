@@ -439,27 +439,31 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRigh
 	s.Model = s.Model.Mul4(mgl.Scale3D(s.Radius, s.Radius, s.Radius))
 }
 
+func reflectVector(x, y mgl.Vec3) mgl.Vec3 {
+	return x.Sub(y.Mul(2 * x.Dot(y)))
+}
+
 func (s *Sphere) WorldIntersect(vrApp *App) {
-	// TODO do dome
-	// For now do box
-
 	sphereCenter := s.Position
-
-	// Walls
-	if sphereCenter[0] >= 10 || sphereCenter[0] <= -10 ||
-		sphereCenter[1] >= 10 || sphereCenter[1] <= -10 {
-		s.Velocity = s.Velocity.Mul(-1)
-	}
-
-	// Reflect off ceiling???
-	if sphereCenter[1]+s.Radius >= vrApp.FloorHeight+3.0 {
-		s.Velocity = s.Velocity.Mul(-1)
-	}
 
 	// Reflect off floor
 	if sphereCenter[1]-s.Radius <= vrApp.FloorHeight {
-		s.Velocity = s.Velocity.Mul(-1)
+		// This needs to reflect with the angel between the velocity and the floor.
+		//s.Velocity = s.Velocity.Mul(-1)
+
+		s.Velocity = reflectVector(s.Velocity, mgl.Vec3{0.0, 1.0, 0.0})
+		return
 	}
+
+	// Reflect off dome.
+	// Distance from the dome to our current sphere.
+	dist := s.Position.Len() + s.Radius
+	if dist >= vrApp.DomeRadius {
+		// We should just point this velocity back at you.
+		s.Velocity = s.Velocity.Mul(-1)
+		return
+	}
+
 }
 
 func (g *Geometry) Draw() {
