@@ -49,7 +49,8 @@ import (
 )
 
 const (
-	bladeLength = 0.70
+	bladeLength        = 0.70
+	handInputsToRecord = 2
 )
 
 var glctx gl.Context
@@ -103,8 +104,22 @@ func runApp(vrApp *App) error {
 }
 
 func handleInput(vrApp *App, displayTime float64) error {
-	vrApp.HandPosLeft, vrApp.OrientationLeft = nil, nil
-	vrApp.HandPosRight, vrApp.OrientationRight = nil, nil
+	/*
+		vrApp.HandPosLeft, vrApp.OrientationLeft = nil, nil
+		vrApp.HandPosRight, vrApp.OrientationRight = nil, nil
+	*/
+
+	// Add a hand inputs (nil for now will get filled in if the controller is connected)
+	vrApp.LeftHandInputs = append([]*HandInput{nil}, vrApp.LeftHandInputs...)
+	if l := len(vrApp.LeftHandInputs); l > handInputsToRecord {
+		vrApp.LeftHandInputs[l-1] = nil
+		vrApp.LeftHandInputs = vrApp.LeftHandInputs[:l-1]
+	}
+	vrApp.RightHandInputs = append([]*HandInput{nil}, vrApp.RightHandInputs...)
+	if l := len(vrApp.RightHandInputs); l > handInputsToRecord {
+		vrApp.RightHandInputs[l-1] = nil
+		vrApp.RightHandInputs = vrApp.RightHandInputs[:l-1]
+	}
 
 	i := uint32(0)
 	var capability vrapi.OVRInputCapabilityHeader
@@ -146,12 +161,12 @@ func handleInput(vrApp *App, displayTime float64) error {
 			isLeft := caps.ControllerCapabilities&vrapi.OVRControllerCaps_LeftHand > 0
 
 			// Update game state.
+			handIn := &HandInput{inputState.GripPose.Orientation,
+				inputState.GripPose.Position}
 			if isLeft {
-				vrApp.HandPosLeft = &inputState.GripPose.Position
-				vrApp.OrientationLeft = &inputState.GripPose.Orientation
+				vrApp.LeftHandInputs[0] = handIn
 			} else {
-				vrApp.HandPosRight = &inputState.GripPose.Position
-				vrApp.OrientationRight = &inputState.GripPose.Orientation
+				vrApp.RightHandInputs[0] = handIn
 			}
 		default:
 			//log.Printf("Unrecognized input device %+v", capability)
@@ -383,7 +398,8 @@ func sqrt(disc float32) float32 {
 	return float32(math.Sqrt(float64(disc)))
 }
 
-func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat, leftOrRight bool) {
+func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
+	handIns []*HandInput, leftOrRight bool) {
 	// "Center sphere" at 0, 0 with radius = 1 by moving hand
 	/*
 		hand := handPos.Vec4(1.0)
@@ -694,24 +710,19 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		}
 
 		for i := 0; i < 2; i++ { // Hands(s)
-			var pos, col mgl.Vec3
-			var orient mgl.Quat
+			//var pos, col mgl.Vec3
+			//var orient mgl.Quat
 
-			// Right
-			if i == 0 && r.VRApp.HandPosRight == nil {
-				continue
-			} else if i == 0 {
-				pos, orient = *r.VRApp.HandPosRight, *r.VRApp.OrientationRight
-				col = rightHandCol
-			}
-
-			// Left
-			if i == 1 && r.VRApp.HandPosLeft == nil {
-				continue
-			} else if i == 1 {
-				pos, orient = *r.VRApp.HandPosLeft, *r.VRApp.OrientationLeft
+			col := rightHandCol
+			handIns := r.VRApp.RightHandInputs
+			if i == 1 {
 				col = leftHandCol
+				handIns = r.VRApp.LeftHandInputs
 			}
+			if len(handIns) == 0 || handIns[0] == nil {
+				continue
+			}
+			pos, orient := handIns[0].Position, handIns[0].Orient
 
 			rot := orient.Mat4()
 
@@ -745,9 +756,9 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 			for _, s := range r.Spheres {
 				if i == 0 {
-					s.HandIntersect(pos, orient, false)
+					s.HandIntersect(pos, orient, handIns, false)
 				} else {
-					s.HandIntersect(pos, orient, true)
+					s.HandIntersect(pos, orient, handIns, true)
 				}
 			}
 		}
@@ -965,11 +976,21 @@ type App struct {
 	Worker      gl.Worker
 	FloorHeight float32
 	DomeRadius  float32
-	//
-	OrientationLeft  *mgl.Quat
-	HandPosLeft      *mgl.Vec3
-	OrientationRight *mgl.Quat
-	HandPosRight     *mgl.Vec3
+
+	LeftHandInputs  []*HandInput
+	RightHandInputs []*HandInput
+
+	/*
+		OrientationLeft  *mgl.Quat
+		HandPosLeft      *mgl.Vec3
+		OrientationRight *mgl.Quat
+		HandPosRight     *mgl.Vec3
+	*/
+}
+
+type HandInput struct {
+	Orient   mgl.Quat
+	Position mgl.Vec3
 }
 
 func appEnterVRMode(vrApp *App) {
