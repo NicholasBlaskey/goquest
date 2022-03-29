@@ -48,6 +48,13 @@ import (
 	"github.com/nicholasblaskey/vrapi/ovrMatrix4f"
 )
 
+var pastPoints []mgl.Vec3
+
+const (
+	debug            = true
+	pastPointsToDraw = 10
+)
+
 const (
 	bladeLength        = 0.70
 	handInputsToRecord = 2
@@ -441,9 +448,31 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 	if intersects { // Add a velocity
 		//if s.Velocity == (mgl.Vec3{}) {
 		if s.FramesSinceLastIntersect > 5 {
+			//s.Velocity = intersectPoint.Normalize().Mul(-0.01)
+
+			// Get previous point of intersect.
+
 			// Flip normal vector to get direction sphere needs to go after intersections.
-			// TODO make this based off predicted display time dt type thing.
-			s.Velocity = intersectPoint.Normalize().Mul(-0.01)
+			velocity := intersectPoint.Normalize().Mul(-0.01)
+
+			// Add a strength value.
+			// First we take the point that we intersected on.
+			curPoint := intersectPoint
+			// Calculate where that point was on the previous frame.
+			prevHand := handIns[1]
+			prevDir := prevHand.Orient.Rotate(mgl.Vec3{0.0, 0.0, -1.0}).Normalize()
+			prevPos := prevHand.Position
+			prevPoint := prevDir.Mul(t).Add(prevPos)
+
+			if debug {
+				pastPoints = append(pastPoints, prevPoint)
+				if len(pastPoints) > pastPointsToDraw {
+					pastPoints = pastPoints[1:]
+				}
+			}
+
+			velocity = velocity.Mul(prevPoint.Sub(curPoint).Len())
+			s.Velocity = velocity
 		}
 
 		s.FramesSinceLastIntersect = 0
@@ -722,6 +751,19 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			if len(handIns) == 0 || handIns[0] == nil {
 				continue
 			}
+
+			// TODO remove this and better handle cut off input
+			allAreNil := true
+			for _, h := range handIns {
+				if h != nil {
+					allAreNil = false
+					break
+				}
+			}
+			if allAreNil {
+				continue
+			}
+
 			pos, orient := handIns[0].Position, handIns[0].Orient
 
 			rot := orient.Mat4()
@@ -804,6 +846,18 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
+				r.Sphere.Draw()
+			}
+		}
+
+		if debug {
+			for _, p := range pastPoints {
+				model := mgl.Translate3D(p[0], p[1], p[2])
+				model = model.Mul4(mgl.Scale3D(0.05, 0.05, 0.05))
+				normal := model.Inv().Transpose()
+
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 				r.Sphere.Draw()
 			}
 		}
