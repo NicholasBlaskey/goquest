@@ -56,6 +56,7 @@ const (
 )
 
 const (
+	bladeAcceleration  = 20.0
 	bladeLength        = 0.70
 	handInputsToRecord = 2
 )
@@ -457,21 +458,23 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 
 			// Add a strength value.
 			// First we take the point that we intersected on.
-			curPoint := intersectPoint
+			curPoint := s.Model.Mul4x1(intersectPoint.Vec4(1.0)).Vec3()
 			// Calculate where that point was on the previous frame.
-			prevHand := handIns[1]
+			prevHand := handIns[len(handIns)-1]
 			prevDir := prevHand.Orient.Rotate(mgl.Vec3{0.0, 0.0, -1.0}).Normalize()
 			prevPos := prevHand.Position
-			prevPoint := prevDir.Mul(t).Add(prevPos)
+
+			prevPoint := prevDir.Mul(t * s.Radius).Add(prevPos)
 
 			if debug {
+
 				pastPoints = append(pastPoints, prevPoint)
 				if len(pastPoints) > pastPointsToDraw {
 					pastPoints = pastPoints[1:]
 				}
 			}
 
-			velocity = velocity.Mul(prevPoint.Sub(curPoint).Len())
+			velocity = velocity.Mul(prevPoint.Sub(curPoint).Len() * bladeAcceleration)
 			s.Velocity = velocity
 		}
 
