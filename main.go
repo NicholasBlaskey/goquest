@@ -56,7 +56,7 @@ const (
 )
 
 const (
-	ballWeight         = 0.5
+	ballMass           = 0.5
 	bladeAcceleration  = 5.0 //20.0
 	bladeLength        = 0.70
 	handInputsToRecord = 2
@@ -401,6 +401,7 @@ type Sphere struct {
 	Velocity                 mgl.Vec3
 	Position                 mgl.Vec3
 	FramesSinceLastIntersect int
+	Mass                     float32
 }
 
 func sqrt(disc float32) float32 {
@@ -462,9 +463,11 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 
 			velocity := curPoint.Sub(prevPoint).Mul(1 / bladeAcceleration)
 
+			// TODO Do we wanna factor the normal vector of the sphere impact point.
+
 			// Reflect our current velocity off the spheres current velocity.
 			//s.Velocity = reflectVector(velocity, s.Velocity)
-			s.Velocity = velocity.Add(s.Velocity.Mul(-ballWeight))
+			s.Velocity = velocity.Add(s.Velocity.Mul(-s.Mass))
 		}
 
 		s.FramesSinceLastIntersect = 0
@@ -502,6 +505,48 @@ func (s *Sphere) WorldIntersect(vrApp *App) {
 		s.Velocity = sphereCenter.Normalize().Mul(-s.Velocity.Len())
 
 		return
+	}
+}
+
+func SphereIntersect(r *Renderer) {
+	// For each combination of sphere pairs.
+	for i := 0; i < len(r.Spheres); i++ {
+		for j := i + 1; j < len(r.Spheres); j++ {
+			s0 := r.Spheres[i]
+			s1 := r.Spheres[j]
+
+			// Do they intersect?
+			if s0.Position.Sub(s1.Position).Len() <= s0.Radius+s1.Radius {
+				if s.FramesSinceLastIntersect > 5 {
+
+					s0Velocity := s0.Velocity
+					s1Velocity := s1.Velocity
+
+					// hmmm? I don't know physics that well
+					// https://physics.stackexchange.com/questions/599278/how-can-i-calculate-the-final-velocities-of-two-spheres-after-an-elastic-collisi
+					// Seems very complex
+					// https://studiofreya.com/3d-math-and-physics/simple-sphere-sphere-collision-detection-and-collision-response/
+					// cases
+					// s0 and s1 both have opposite velocities
+					// => cleary they will bonk and go the opposite way
+					// s0 runs into s1
+					// => s0 gets reflected back s1 gets accerelated forward
+					// s0 runs into s1 but s0 is massive (in magnitude of velocity nad mass)
+
+					// => s0 loses some velocity s1 gets shot forward
+
+					// Basis vecotr (x axis)
+					//vecx := s0.Position.Sub(s1.Position).Normalize()
+
+					// X direction velocity vector
+
+					//s0.Velocity = reflectVector(s0Velocity, s1Velocity)
+					//s1.Velocity = reflectVector(s1Velocity, s0Velocity)
+				}
+
+				//log.Println("BONK", s0.Position, s1.Position)
+			}
+		}
 	}
 
 }
@@ -816,6 +861,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		}
 
 		{ // Spheres
+			SphereIntersect(r)
 			for _, s := range r.Spheres {
 				s.WorldIntersect(r.VRApp)
 
@@ -906,21 +952,10 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 	r.createGeometry()
 	log.Println("Finished creating geometry")
 
-	/*
-		// Create geometry objects (TODO maybe better as vrApp but we will see)
-		{
-			model := mgl.Translate3D(0.0, 1.0, 0.0)
-			scaleAmount := float32(0.5)
-			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
-			r.Spheres = append(r.Spheres, &Sphere{Model: model, SizeFactor: scaleAmount,
-				Position: mgl.Vec3{0.0, 1.0, 0.0}})
-		}
-	*/
-
 	// Create spheres in a circle
 	{
 		distAway := float32(1.5)
-		n := 10
+		n := 5
 		for i := 0; i < n; i++ {
 			pi := (2 * math.Pi) / (float32(i) / float32(n))
 			x, z := cos(pi)*distAway, sin(pi)*distAway
@@ -931,16 +966,8 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 			model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
 				mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
 			r.Spheres = append(r.Spheres, &Sphere{Model: model,
-				Radius: scaleAmount, Position: pos})
+				Radius: scaleAmount, Position: pos, Mass: ballMass})
 		}
-		/*
-
-			model := mgl.Translate3D(0.0, 1.0, 0.0)
-			scaleAmount := float32(0.5)
-			model = model.Mul4(mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
-			r.Spheres = append(r.Spheres, &Sphere{Model: model, SizeFactor: scaleAmount,
-				Position: mgl.Vec3{0.0, 1.0, 0.0}})
-		*/
 	}
 
 	return r, nil
