@@ -56,6 +56,7 @@ const (
 )
 
 const (
+	ballWeight         = 0.5
 	bladeAcceleration  = 5.0 //20.0
 	bladeLength        = 0.70
 	handInputsToRecord = 2
@@ -448,16 +449,10 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 	s.FramesSinceLastIntersect++
 	if intersects { // Add a velocity
 		//if s.Velocity == (mgl.Vec3{}) {
-		if s.FramesSinceLastIntersect > 5 {
-			//s.Velocity = intersectPoint.Normalize().Mul(-0.01)
-
-			// Get previous point of intersect.
-
-			// Flip normal vector to get direction sphere needs to go after intersections.
-			//velocity := intersectPoint.Normalize().Mul(-0.01)
-
-			// Add a strength value.
-			// First we take the point that we intersected on.
+		if s.FramesSinceLastIntersect > 5 { // 5
+			// Get our new velocity to add.
+			// By getting the vector from the previous point
+			// to our current point.
 			curPoint := s.Model.Mul4x1(intersectPoint.Vec4(1.0)).Vec3()
 
 			prevHand := handIns[len(handIns)-1]
@@ -467,26 +462,9 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 
 			velocity := curPoint.Sub(prevPoint).Mul(1 / bladeAcceleration)
 
-			/*
-				// Calculate where that point was on the previous frame.
-				prevHand := handIns[len(handIns)-1]
-				prevDir := prevHand.Orient.Rotate(mgl.Vec3{0.0, 0.0, -1.0}).Normalize()
-				prevPos := prevHand.Position
-
-				prevPoint := prevDir.Mul(t * s.Radius).Add(prevPos)
-
-				if debug {
-
-					pastPoints = append(pastPoints, prevPoint)
-					if len(pastPoints) > pastPointsToDraw {
-						pastPoints = pastPoints[1:]
-					}
-				}
-
-				velocity = velocity.Mul(prevPoint.Sub(curPoint).Len() * bladeAcceleration)
-			*/
-
-			s.Velocity = velocity
+			// Reflect our current velocity off the spheres current velocity.
+			//s.Velocity = reflectVector(velocity, s.Velocity)
+			s.Velocity = velocity.Add(s.Velocity.Mul(-ballWeight))
 		}
 
 		s.FramesSinceLastIntersect = 0
@@ -519,7 +497,10 @@ func (s *Sphere) WorldIntersect(vrApp *App) {
 	dist := s.Position.Len() + s.Radius
 	if dist >= vrApp.DomeRadius {
 		// We should just point this velocity back at you.
-		s.Velocity = s.Velocity.Mul(-1)
+		//s.Velocity = s.Velocity.Mul(-1)
+
+		s.Velocity = sphereCenter.Normalize().Mul(-s.Velocity.Len())
+
 		return
 	}
 
