@@ -56,6 +56,7 @@ const (
 )
 
 const (
+	repelAmount        = 0.001
 	frameGracePeriod   = 10
 	ballMass           = 0.5
 	bladeAcceleration  = 5.0 //20.0
@@ -540,45 +541,17 @@ func SphereIntersect(r *Renderer) {
 					m1 := s1.Mass
 
 					// Collision
-					vel := v0x.Mul((m0 - m1) / (m0 + m1)).Add(
+					// Add a minor repellent to ensure that the spheres don't get
+					// stuck on each other. TODO not loving this repel amount. Revisit this???
+					repel := s0.Position.Sub(s1.Position).Normalize().Mul(repelAmount)
+
+					s0.Velocity = v0x.Mul((m0 - m1) / (m0 + m1)).Add(
 						v1x.Mul((1 * m1) / (m0 + m1)),
-					).Add(v0y)
-					s0.Velocity = vel
+					).Add(v0y).Add(repel)
 
-					vel = v0x.Mul((1 * m0) / (m0 + m1)).Add(
+					s1.Velocity = v0x.Mul((1 * m0) / (m0 + m1)).Add(
 						v1x.Mul((m1 - m0) / (m0 + m1)),
-					).Add(v1y)
-					s1.Velocity = vel
-
-					/*
-						x := s0.Position.Sub(s1.Position).Normalize()
-						v1 := s0.Velocity
-						x1 := x.Dot(v1)
-
-						v1x := x.Mul(x1)
-						v1y := v1.Sub(v1x)
-						m1 := s0.Mass
-
-						// Sphere 1
-						x = x.Mul(-1)
-						v2 := s1.Velocity
-						x2 := x.Dot(v2)
-						v2x := x.Mul(x2)
-						v2y := v2.Sub(v2x)
-						m2 := s1.Mass
-
-						// Collision
-						vel := v1x.Mul((m1 - m2) / (m1 + m2)).Add(
-							v2x.Mul((2 * m2) / (m1 + m2)),
-						).Add(v1y)
-						s0.Velocity = vel
-
-						vel = v1x.Mul((2 * m1) / (m1 + m2)).Add(
-							v2x.Mul((m2 - m1) / (m1 + m2)),
-						).Add(v2y)
-						s1.Velocity = vel
-
-					*/
+					).Add(v1y).Add(repel.Mul(-1))
 				}
 
 				//log.Println("BONK", s0.Position, s1.Position)
