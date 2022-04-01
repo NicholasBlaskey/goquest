@@ -56,6 +56,7 @@ const (
 )
 
 const (
+	frameGracePeriod   = 10
 	ballMass           = 0.5
 	bladeAcceleration  = 5.0 //20.0
 	bladeLength        = 0.70
@@ -450,7 +451,7 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 	s.FramesSinceLastIntersect++
 	if intersects { // Add a velocity
 		//if s.Velocity == (mgl.Vec3{}) {
-		if s.FramesSinceLastIntersect > 5 { // 5
+		if s.FramesSinceLastIntersect > frameGracePeriod {
 			// Get our new velocity to add.
 			// By getting the vector from the previous point
 			// to our current point.
@@ -517,31 +518,67 @@ func SphereIntersect(r *Renderer) {
 
 			// Do they intersect?
 			if s0.Position.Sub(s1.Position).Len() <= s0.Radius+s1.Radius {
-				if s.FramesSinceLastIntersect > 5 {
+				if s0.FramesSinceLastIntersect > frameGracePeriod &&
+					s1.FramesSinceLastIntersect > frameGracePeriod {
 
-					s0Velocity := s0.Velocity
-					s1Velocity := s1.Velocity
-
-					// hmmm? I don't know physics that well
 					// https://physics.stackexchange.com/questions/599278/how-can-i-calculate-the-final-velocities-of-two-spheres-after-an-elastic-collisi
-					// Seems very complex
-					// https://studiofreya.com/3d-math-and-physics/simple-sphere-sphere-collision-detection-and-collision-response/
-					// cases
-					// s0 and s1 both have opposite velocities
-					// => cleary they will bonk and go the opposite way
-					// s0 runs into s1
-					// => s0 gets reflected back s1 gets accerelated forward
-					// s0 runs into s1 but s0 is massive (in magnitude of velocity nad mass)
+					// Sphere 0
+					x := s0.Position.Sub(s1.Position).Normalize()
+					v0 := s0.Velocity
+					x0 := x.Dot(v0)
 
-					// => s0 loses some velocity s1 gets shot forward
+					v0x := x.Mul(x0)
+					v0y := v0.Sub(v0x)
+					m0 := s0.Mass
 
-					// Basis vecotr (x axis)
-					//vecx := s0.Position.Sub(s1.Position).Normalize()
+					// Sphere 1
+					x = x.Mul(-1)
+					v1 := s1.Velocity
+					x1 := x.Dot(v1)
+					v1x := x.Mul(x1)
+					v1y := v1.Sub(v1x)
+					m1 := s1.Mass
 
-					// X direction velocity vector
+					// Collision
+					vel := v0x.Mul((m0 - m1) / (m0 + m1)).Add(
+						v1x.Mul((1 * m1) / (m0 + m1)),
+					).Add(v0y)
+					s0.Velocity = vel
 
-					//s0.Velocity = reflectVector(s0Velocity, s1Velocity)
-					//s1.Velocity = reflectVector(s1Velocity, s0Velocity)
+					vel = v0x.Mul((1 * m0) / (m0 + m1)).Add(
+						v1x.Mul((m1 - m0) / (m0 + m1)),
+					).Add(v1y)
+					s1.Velocity = vel
+
+					/*
+						x := s0.Position.Sub(s1.Position).Normalize()
+						v1 := s0.Velocity
+						x1 := x.Dot(v1)
+
+						v1x := x.Mul(x1)
+						v1y := v1.Sub(v1x)
+						m1 := s0.Mass
+
+						// Sphere 1
+						x = x.Mul(-1)
+						v2 := s1.Velocity
+						x2 := x.Dot(v2)
+						v2x := x.Mul(x2)
+						v2y := v2.Sub(v2x)
+						m2 := s1.Mass
+
+						// Collision
+						vel := v1x.Mul((m1 - m2) / (m1 + m2)).Add(
+							v2x.Mul((2 * m2) / (m1 + m2)),
+						).Add(v1y)
+						s0.Velocity = vel
+
+						vel = v1x.Mul((2 * m1) / (m1 + m2)).Add(
+							v2x.Mul((m2 - m1) / (m1 + m2)),
+						).Add(v2y)
+						s1.Velocity = vel
+
+					*/
 				}
 
 				//log.Println("BONK", s0.Position, s1.Position)
