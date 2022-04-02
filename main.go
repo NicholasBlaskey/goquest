@@ -28,9 +28,6 @@ import (
 	//"github.com/go-gl/gl/v2.1/gl"
 	"golang.org/x/mobile/app"
 
-	//	"runtime"
-	//"github.com/monzo/gomobile/app"
-
 	//gl "github.com/go-gl/gl/v3.1/gles2"
 
 	"golang.org/x/mobile/event/key"
@@ -57,12 +54,12 @@ const (
 
 const (
 	numTargets         = 30
-	targetRadius       = 3.0
+	targetRadius       = 1.0
 	repelAmount        = 0.001
 	frameGracePeriod   = 3
 	ballMass           = 0.5
-	bladeAcceleration  = 5.0 //20.0
-	bladeLength        = 0.70
+	bladeAcceleration  = 5.0  //20.0
+	bladeLength        = 0.70 // 4.0
 	handInputsToRecord = 2
 )
 
@@ -484,7 +481,12 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 	s.Model = s.Model.Mul4(mgl.Scale3D(s.Radius, s.Radius, s.Radius))
 }
 
-func (s *Sphere) TargetIntersect(spheres []*Sphere) bool {
+func (t *Sphere) TargetIntersect(spheres []*Sphere) bool {
+	for _, s := range spheres {
+		if t.Position.Sub(s.Position).Len() <= s.Radius+t.Radius {
+			return true
+		}
+	}
 
 	return false
 }
@@ -629,6 +631,26 @@ func (r *Renderer) createGeometry() {
 	r.Sphere = makeGeometry(makeSphereVerts(32))
 }
 
+/* Why is this broken?
+vec3 norm = aNormal;
+if (uInside == 1) { // || true
+	norm = -norm;
+}
+
+vec3 pos = aPosition;
+if (uExplode > 0.0) {
+	pos = norm * uExplode + pos;
+}
+
+
+gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition, 1.0)));
+
+vColor = aColor;
+vFragPos = vec3(uModelMatrix * vec4(aPosition, 1.0));
+vNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
+
+*/
+
 const vertexShader = `
 #version 300 es
 in vec3 aPosition;
@@ -639,6 +661,7 @@ uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
 uniform mat4 uNormalMatrix;
 uniform int uInside;
+uniform float uExplode;
 out vec3 vColor;
 out vec3 vNormal;
 out vec3 vFragPos;
@@ -649,7 +672,7 @@ void main() {
 
 	vec3 norm = aNormal;
 	if (uInside == 1) { // || true
-		norm = -norm;
+			norm = -norm;
 	}
 	vNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
 }
@@ -722,7 +745,8 @@ func (r *Renderer) createProgram() error {
 	// Uniforms (do something better)
 	r.Program.UniformLocations = make(map[string]gl.Uniform)
 	uniforms := []string{"uModelMatrix", "uViewMatrix", "uProjectionMatrix",
-		"uNormalMatrix", "uViewPos", "uUseCheckerBoard", "uSolidColor", "uInside"}
+		"uNormalMatrix", "uViewPos", "uUseCheckerBoard", "uSolidColor", "uInside",
+		"uExplode"}
 	for _, name := range uniforms {
 		r.Program.UniformLocations[name] = glctx.GetUniformLocation(p, name)
 	}
@@ -929,6 +953,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				model := t.Model
 				normal := model.Inv().Transpose()
 
+				glctx.Uniform1f(r.Program.UniformLocations["uExplode"], 0.2)
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
 
 				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], 0.5, 0.3, 0.3)
@@ -936,6 +961,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 				r.Sphere.Draw()
 
+				glctx.Uniform1f(r.Program.UniformLocations["uExplode"], 0.0)
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0)
 			}
 
