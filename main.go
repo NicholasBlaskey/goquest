@@ -56,8 +56,10 @@ const (
 )
 
 const (
+	numTargets         = 30
+	targetRadius       = 3.0
 	repelAmount        = 0.001
-	frameGracePeriod   = 10
+	frameGracePeriod   = 3
 	ballMass           = 0.5
 	bladeAcceleration  = 5.0 //20.0
 	bladeLength        = 0.70
@@ -384,6 +386,7 @@ type Renderer struct {
 	Cube         *Geometry
 	Sphere       *Geometry
 	Spheres      []*Sphere
+	Targets      []*Sphere
 }
 
 type Geometry struct {
@@ -479,6 +482,11 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 	s.Position = s.Position.Add(s.Velocity)
 	s.Model = mgl.Translate3D(s.Position[0], s.Position[1], s.Position[2])
 	s.Model = s.Model.Mul4(mgl.Scale3D(s.Radius, s.Radius, s.Radius))
+}
+
+func (s *Sphere) TargetIntersect(spheres []*Sphere) bool {
+
+	return false
 }
 
 func reflectVector(x, y mgl.Vec3) mgl.Vec3 {
@@ -872,6 +880,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 		{ // Spheres
 			SphereIntersect(r)
+
 			for _, s := range r.Spheres {
 				s.WorldIntersect(r.VRApp)
 
@@ -898,6 +907,52 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 
 				r.Sphere.Draw()
+			}
+		}
+
+		{ // Targets
+			// Remove any hit targets
+			j := 0
+			for _, t := range r.Targets {
+				if !t.TargetIntersect(r.Spheres) {
+					r.Targets[j] = t
+					j++
+
+					// no need to nil out r.Targets[len(r.Targets)-1-j] for GC since
+					// we will add targets later
+				}
+			}
+			r.Targets = r.Targets[:j]
+
+			// Draw
+			for _, t := range r.Targets {
+				model := t.Model
+				normal := model.Inv().Transpose()
+
+				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
+
+				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], 0.5, 0.3, 0.3)
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
+				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
+				r.Sphere.Draw()
+
+				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0)
+			}
+
+			// Add any targets that were potentially broken.
+			for len(r.Targets) < numTargets {
+				pos := randPointOnSphere(r.VRApp.DomeRadius)
+				if pos[1] < 0.0 { // Only consider upper half of sphere / dome.
+					pos[1] *= -1
+				}
+				model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
+					mgl.Scale3D(targetRadius, targetRadius, targetRadius))
+
+				r.Targets = append(r.Targets, &Sphere{
+					Model:    model,
+					Radius:   targetRadius,
+					Position: pos,
+				})
 			}
 		}
 
@@ -964,19 +1019,21 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 
 	// Create spheres in a circle
 	{
-		distAway := float32(1.5)
-		n := 5
-		for i := 0; i < n; i++ {
-			pi := (2 * math.Pi) / (float32(i) / float32(n))
-			x, z := cos(pi)*distAway, sin(pi)*distAway
+		for distAway := float32(1.5); distAway < 1.6; distAway += 1.5 {
+			//distAway := float32(1.5)
+			n := 5 // 12
+			for i := 0; i < n; i++ {
+				pi := (2 * math.Pi) / (float32(i) / float32(n))
+				x, z := cos(pi)*distAway, sin(pi)*distAway
 
-			scaleAmount := float32(0.5)
-			pos := mgl.Vec3{x, 0.0, z}
+				scaleAmount := float32(0.5)
+				pos := mgl.Vec3{x, 0.0, z}
 
-			model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
-				mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
-			r.Spheres = append(r.Spheres, &Sphere{Model: model,
-				Radius: scaleAmount, Position: pos, Mass: ballMass})
+				model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
+					mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+				r.Spheres = append(r.Spheres, &Sphere{Model: model,
+					Radius: scaleAmount, Position: pos, Mass: ballMass})
+			}
 		}
 	}
 

@@ -1,6 +1,11 @@
 package main
 
-import "math"
+import (
+	"math"
+	"math/rand"
+
+	mgl "github.com/go-gl/mathgl/mgl32"
+)
 
 func sin(x float32) float32 {
 	return float32(math.Sin(float64(x)))
@@ -8,6 +13,22 @@ func sin(x float32) float32 {
 
 func cos(x float32) float32 {
 	return float32(math.Cos(float64(x)))
+}
+
+func randPointOnSphere(radius float32) mgl.Vec3 {
+	// 0 <= theta <= pi
+	theta := rand.Float32() * math.Pi
+	// 0 <= phi < 2pi
+	phi := rand.Float32() * math.Pi * 2
+
+	return thetaPhiToPos(theta, phi).Mul(radius)
+}
+
+func thetaPhiToPos(theta, phi float32) mgl.Vec3 {
+	xPos := sin(theta) * cos(phi)
+	yPos := sin(theta) * sin(phi)
+	zPos := cos(theta)
+	return mgl.Vec3{xPos, yPos, zPos}
 }
 
 func makeSphereVerts(n int) ([]float32, []uint16) {
@@ -25,15 +46,18 @@ func makeSphereVerts(n int) ([]float32, []uint16) {
 			theta := (float32(x) / float32(n)) * math.Pi
 			phi := (float32(y) / float32(n)) * 2 * math.Pi
 
-			xPos := sin(theta) * cos(phi)
-			yPos := sin(theta) * sin(phi)
-			zPos := cos(theta)
+			pos := thetaPhiToPos(theta, phi)
 
-			verts = append(verts,
-				xPos, yPos, zPos, // Positions
-				+1.0, +1.0, +1.0, // Colors
-				xPos, yPos, zPos, // Normals
-			)
+			verts = append(verts, pos[:]...)        // Pos
+			verts = append(verts, +1.0, +1.0, +1.0) // Colors
+			verts = append(verts, pos[:]...)        // Normals
+			/*
+				verts = append(verts,
+					xPos, yPos, zPos, // Positions
+					+1.0, +1.0, +1.0, // Colors
+					xPos, yPos, zPos, // Normals
+				)
+			*/
 		}
 	}
 
