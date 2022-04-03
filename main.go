@@ -666,9 +666,11 @@ out vec3 vColor;
 out vec3 vNormal;
 out vec3 vFragPos;
 void main() {
-	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(aPosition, 1.0)));
+	vec3 pos = aPosition + aNormal;
+
+	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(pos, 1.0)));
 	vColor = aColor;
-	vFragPos = vec3(uModelMatrix * vec4(aPosition, 1.0));
+	vFragPos = vec3(uModelMatrix * vec4(pos, 1.0));
 
 	vec3 norm = aNormal;
 	if (uInside == 1) { // || true
@@ -953,7 +955,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				model := t.Model
 				normal := model.Inv().Transpose()
 
-				glctx.Uniform1f(r.Program.UniformLocations["uExplode"], 0.2)
+				glctx.Uniform1f(r.Program.UniformLocations["uExplode"], 1.0)
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
 
 				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], 0.5, 0.3, 0.3)
@@ -1258,4 +1260,5 @@ func main() {
 			}
 		}
 	})
+
 }
