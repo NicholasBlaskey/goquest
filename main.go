@@ -661,22 +661,36 @@ uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
 uniform mat4 uNormalMatrix;
 uniform int uInside;
-uniform float uExplode;
+uniform int uExplode;
 out vec3 vColor;
 out vec3 vNormal;
 out vec3 vFragPos;
 void main() {
-	vec3 pos = aPosition + aNormal;
+	vec3 pos = aPosition;
 
-	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(pos, 1.0)));
+
+
+	//if ((uExplode == 1) && false) { // If statement always goes off
+	//if (false) { // If statement never goes off
+	//if (uExplode == 1) { // If statement always goes off
+	/*
+	if (false) {
+		//pos = pos + norm;
+	}
+	*/
+
+
 	vColor = aColor;
 	vFragPos = vec3(uModelMatrix * vec4(pos, 1.0));
 
+	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(pos, 1.0)));
+
 	vec3 norm = aNormal;
-	if (uInside == 1) { // || true
-			norm = -norm;
+	if (uInside == 1) { 
+		norm = -norm;
 	}
 	vNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
+
 }
 `
 
@@ -955,15 +969,33 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				model := t.Model
 				normal := model.Inv().Transpose()
 
-				glctx.Uniform1f(r.Program.UniformLocations["uExplode"], 1.0)
+				/*
+					{
+						dst := make([]float32, 1)
+						glctx.GetUniformfv(dst, r.Program.UniformLocations["uExplode"],
+							r.Program.GLProgram)
+						log.Println("Before", dst)
+					}
+				*/
+
+				glctx.Uniform1i(r.Program.UniformLocations["uExplode"], 0)
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 2)
+
+				/*
+					{
+						dst := make([]float32, 1)
+						glctx.GetUniformfv(dst, r.Program.UniformLocations["uExplode"],
+							r.Program.GLProgram)
+						log.Println("After", dst)
+					}
+				*/
 
 				glctx.Uniform3f(r.Program.UniformLocations["uSolidColor"], 0.5, 0.3, 0.3)
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uModelMatrix"], model[:])
 				glctx.UniformMatrix4fv(r.Program.UniformLocations["uNormalMatrix"], normal[:])
 				r.Sphere.Draw()
 
-				glctx.Uniform1f(r.Program.UniformLocations["uExplode"], 0.0)
+				glctx.Uniform1i(r.Program.UniformLocations["uExplode"], 0)
 				glctx.Uniform1i(r.Program.UniformLocations["uUseCheckerBoard"], 0)
 			}
 
