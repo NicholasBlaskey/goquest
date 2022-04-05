@@ -663,7 +663,7 @@ uniform mat4 uNormalMatrix;
 uniform int uInside;
 uniform int uExplode;
 out vec3 vColor;
-out vec3 vNormal;
+out vec3 vvNormal;
 out vec3 vFragPos;
 void main() {
 	vec3 pos = aPosition;
@@ -677,22 +677,23 @@ void main() {
 	}
 	*/
 
+
+	vColor = aColor;
+
 	// The order of these two statements seems to matter.
 	// For some reason if norm is before aColor we get strange results.
 	// Hmmm, are they both pointing the same address in memory? somehow?
-	vColor = aColor;
-	vNormal = vec3(uNormalMatrix * vec4(aNormal, 1.0));
-
-
-	/*
 	vec3 norm;
 	if (uInside == 1) { 
 		norm = -aNormal;
 	} else {
 		norm = aNormal;
 	}
-	vNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
-	*/
+
+	vvNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
+
+
+
 
 
 
@@ -707,7 +708,7 @@ void main() {
 const fragmentShader = `
 #version 300 es
 in lowp vec3 vColor;
-in lowp vec3 vNormal;
+in lowp vec3 vvNormal;
 in lowp vec3 vFragPos;
 out lowp vec4 outColor;
 
@@ -729,7 +730,7 @@ void main() {
 	} else if (uUseCheckerBoard == 2) {
 		col = uSolidColor;
 	} else if (uUseCheckerBoard == 3) {
-		outColor = vec4((vNormal + 1.0) / 2.0, 1.0);
+		outColor = vec4((vvNormal + 1.0) / 2.0, 1.0);
 		return;
 	}
 
@@ -738,7 +739,7 @@ void main() {
 	vec3 lightPos = uViewPos;
     vec3 lightColor = vec3(1.0, 1.0, 1.0);
 	
-	vec3 normalized = normalize(vNormal);
+	vec3 normalized = normalize(vvNormal);
 	vec3 lightDir = normalize(lightPos - vFragPos);
 	float nDotL = max(dot(lightDir, normalized), 0.0);
 	vec3 diffuse = lightColor * col * nDotL;
