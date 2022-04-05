@@ -668,8 +668,6 @@ out vec3 vFragPos;
 void main() {
 	vec3 pos = aPosition;
 
-
-
 	//if ((uExplode == 1) && false) { // If statement always goes off
 	//if (false) { // If statement never goes off
 	//if (uExplode == 1) { // If statement always goes off
@@ -679,18 +677,30 @@ void main() {
 	}
 	*/
 
-
+	// The order of these two statements seems to matter.
+	// For some reason if norm is before aColor we get strange results.
+	// Hmmm, are they both pointing the same address in memory? somehow?
 	vColor = aColor;
-	vFragPos = vec3(uModelMatrix * vec4(pos, 1.0));
+	vNormal = vec3(uNormalMatrix * vec4(aNormal, 1.0));
 
-	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(pos, 1.0)));
 
-	vec3 norm = aNormal;
+	/*
+	vec3 norm;
 	if (uInside == 1) { 
-		norm = -norm;
+		norm = -aNormal;
+	} else {
+		norm = aNormal;
 	}
 	vNormal = vec3(uNormalMatrix * vec4(norm, 1.0));
+	*/
 
+
+
+
+	vFragPos = vec3(uModelMatrix * vec4(pos, 1.0));
+
+
+	gl_Position = uProjectionMatrix * (uViewMatrix * (uModelMatrix * vec4(pos, 1.0)));
 }
 `
 
