@@ -1002,8 +1002,9 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 							Velocity: velocity.Mul(0.1),
 							Mass:     ballMass,
 						}
-						log.Println(s.Velocity)
-						time.Sleep(100 * time.Millisecond)
+
+						// Make this depedant on frame rate?
+						time.Sleep(250 * time.Millisecond)
 						r.addSphere <- s
 					}()
 
@@ -1048,9 +1049,21 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 			// Add any targets that were potentially broken.
 			for len(r.Targets) < numTargets {
-				pos := randPointOnSphere(r.VRApp.DomeRadius)
-				if pos[1] < 0.0 { // Only consider upper half of sphere / dome.
-					pos[1] *= -1
+				var pos mgl.Vec3
+				isDupe := true
+				for isDupe {
+					isDupe = false
+					pos = randPointOnSphere(r.VRApp.DomeRadius)
+					if pos[1] < 0.0 { // Only consider upper half of sphere / dome.
+						pos[1] *= -1
+					}
+
+					for _, t := range r.Targets {
+						if t.Position.Sub(pos).Len() <= targetRadius*2 {
+							isDupe = true
+							break
+						}
+					}
 				}
 				model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
 					mgl.Scale3D(targetRadius, targetRadius, targetRadius))
