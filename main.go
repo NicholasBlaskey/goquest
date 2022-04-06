@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"reflect"
 	"runtime"
+	"time"
 	"unsafe"
 
 	//"github.com/go-gl/gl/v2.1/gl"
@@ -61,6 +63,7 @@ const (
 	bladeAcceleration  = 5.0  //20.0
 	bladeLength        = 0.70 // 4.0
 	handInputsToRecord = 2
+	ballSize           = 0.5
 )
 
 var glctx gl.Context
@@ -384,6 +387,7 @@ type Renderer struct {
 	Sphere       *Geometry
 	Spheres      []*Sphere
 	Targets      []*Sphere
+	addSphere    chan *Sphere
 }
 
 type Geometry struct {
@@ -930,6 +934,17 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 		}
 
 		{ // Spheres
+			valuesToRead := true
+			for valuesToRead {
+				select {
+				case s := <-r.addSphere:
+					r.Spheres = append(r.Spheres, s)
+				default:
+					valuesToRead = false
+					break
+				}
+			}
+
 			SphereIntersect(r)
 
 			for _, s := range r.Spheres {
@@ -971,6 +986,27 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 
 					// no need to nil out r.Targets[len(r.Targets)-1-j] for GC since
 					// we will add targets later
+				} else { // Spawn a new sphere in place of sphere with random velocity.
+					pos := t.Position
+					model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
+						mgl.Scale3D(ballSize, ballSize, ballSize))
+					velocity := mgl.Vec3{
+						rand.Float32(), rand.Float32(), rand.Float32(),
+					}
+
+					go func() {
+						s := &Sphere{
+							Position: pos,
+							Model:    model,
+							Radius:   ballSize,
+							Velocity: velocity.Mul(0.1),
+							Mass:     ballMass,
+						}
+						log.Println(s.Velocity)
+						time.Sleep(100 * time.Millisecond)
+						r.addSphere <- s
+					}()
+
 				}
 			}
 			r.Targets = r.Targets[:j]
@@ -1065,7 +1101,7 @@ type Framebuffer struct {
 // This needs to run on the mainthread, for
 // vrapi_GetTextureSwapChain stuff
 func rendererCreate(vrApp *App) (*Renderer, error) {
-	r := &Renderer{VRApp: vrApp}
+	r := &Renderer{VRApp: vrApp, addSphere: make(chan *Sphere)}
 	r.Width = vrapi.GetSystemPropertyInt(
 		vrApp.Java, vrapi.SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH)
 	r.Height = vrapi.GetSystemPropertyInt(
@@ -1097,13 +1133,11 @@ func rendererCreate(vrApp *App) (*Renderer, error) {
 				pi := (2 * math.Pi) / (float32(i) / float32(n))
 				x, z := cos(pi)*distAway, sin(pi)*distAway
 
-				scaleAmount := float32(0.5)
 				pos := mgl.Vec3{x, 0.0, z}
-
 				model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
-					mgl.Scale3D(scaleAmount, scaleAmount, scaleAmount))
+					mgl.Scale3D(ballSize, ballSize, ballSize))
 				r.Spheres = append(r.Spheres, &Sphere{Model: model,
-					Radius: scaleAmount, Position: pos, Mass: ballMass})
+					Radius: ballSize, Position: pos, Mass: ballMass})
 			}
 		}
 	}
