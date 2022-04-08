@@ -408,6 +408,7 @@ type Sphere struct {
 	Position                 mgl.Vec3
 	FramesSinceLastIntersect int
 	Mass                     float32
+	FramesTillGone           int
 }
 
 func sqrt(disc float32) float32 {
@@ -486,6 +487,10 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 }
 
 func (t *Sphere) TargetIntersect(spheres []*Sphere) bool {
+	if t.FramesTillGone != 0 {
+		return false
+	}
+
 	for _, s := range spheres {
 		if t.Position.Sub(s.Position).Len() <= s.Radius+t.Radius {
 			return true
@@ -980,13 +985,27 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			// Remove any hit targets
 			j := 0
 			for _, t := range r.Targets {
-				if !t.TargetIntersect(r.Spheres) {
-					r.Targets[j] = t
-					j++
+				// Sphere needs to be deleted
+				if t.FramesTillGone == 1 {
+					continue
+				}
 
-					// no need to nil out r.Targets[len(r.Targets)-1-j] for GC since
-					// we will add targets later
-				} else { // Spawn a new sphere in place of sphere with random velocity.
+				r.Targets[j] = t
+				j++
+
+				// Target is in process of being delete
+				if t.FramesTillGone > 1 {
+					t.Model = t.Model.Mul4(mgl.Scale3D(0.99, 0.99, 0.99))
+					t.FramesTillGone--
+					continue
+				}
+
+				// Spawn a new sphere in place of sphere with random velocity.
+				// Mark sphere for deletion animation going forward.
+				if t.TargetIntersect(r.Spheres) {
+					// Mark sphere for getting smaller till its gone.
+					t.FramesTillGone = 120
+
 					pos := t.Position
 					model := mgl.Translate3D(pos[0], pos[1], pos[2]).Mul4(
 						mgl.Scale3D(ballSize, ballSize, ballSize))
@@ -999,12 +1018,12 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 							Position: pos,
 							Model:    model,
 							Radius:   ballSize,
-							Velocity: velocity.Mul(0.1),
+							Velocity: velocity.Mul(0.05),
 							Mass:     ballMass,
 						}
 
 						// Make this depedant on frame rate?
-						time.Sleep(250 * time.Millisecond)
+						time.Sleep(500 * time.Millisecond)
 						r.addSphere <- s
 					}()
 
