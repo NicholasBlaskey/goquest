@@ -47,6 +47,19 @@ import (
 	"github.com/nicholasblaskey/vrapi/ovrMatrix4f"
 )
 
+// Sphere using most of our time
+//04-08 11:20:37.528  4944  4975 I GoLog   : Sphere time 10.42599ms
+//04-08 11:20:37.530  4944  4975 I GoLog   : Target time 2.309896ms
+//04-08 11:20:37.531  4944  4976 I GoLog   : Hand time 437.812µs
+//
+// Sphere intersect is fine despite being quadratic
+// 04-08 11:23:37.368  5284  5336 I GoLog   : Sphere intersect time 106.302µs
+// 04-08 11:23:37.375  5284  5336 I GoLog   : Sphere time 7.885052ms
+// 04-08 11:23:37.378  5284  5336 I GoLog   : Target time 2.127552ms
+// 04-08 11:23:36.408  5284  5336 I GoLog   : Hand time 369.375µs
+//
+// Is it drawing?
+
 var pastPoints []mgl.Vec3
 
 const (
@@ -487,6 +500,7 @@ func (s *Sphere) HandIntersect(handPos mgl.Vec3, handOrient mgl.Quat,
 }
 
 func (t *Sphere) TargetIntersect(spheres []*Sphere) bool {
+
 	if t.FramesTillGone != 0 {
 		return false
 	}
@@ -530,6 +544,8 @@ func (s *Sphere) WorldIntersect(vrApp *App) {
 }
 
 func SphereIntersect(r *Renderer) {
+	t := time.Now()
+
 	// For each combination of sphere pairs.
 	for i := 0; i < len(r.Spheres); i++ {
 		for j := i + 1; j < len(r.Spheres); j++ {
@@ -577,6 +593,8 @@ func SphereIntersect(r *Renderer) {
 			}
 		}
 	}
+
+	log.Println("Sphere intersect time", time.Now().Sub(t))
 
 }
 
@@ -856,6 +874,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			r.Cube.Draw()
 		}
 
+		t := time.Now()
 		for i := 0; i < 2; i++ { // Hands(s)
 			//var pos, col mgl.Vec3
 			//var orient mgl.Quat
@@ -922,6 +941,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				}
 			}
 		}
+		log.Println("Hand time", time.Now().Sub(t))
 
 		{ // Dome
 			model := mgl.Scale3D(r.VRApp.DomeRadius, r.VRApp.DomeRadius, r.VRApp.DomeRadius)
@@ -938,6 +958,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 			glctx.Uniform1i(r.Program.UniformLocations["uInside"], 0)
 		}
 
+		t = time.Now()
 		{ // Spheres
 			valuesToRead := true
 			for valuesToRead {
@@ -980,7 +1001,9 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				r.Sphere.Draw()
 			}
 		}
+		log.Println("Sphere time", time.Now().Sub(t))
 
+		t = time.Now()
 		{ // Targets
 			// Remove any hit targets
 			j := 0
@@ -1094,6 +1117,7 @@ func (r *Renderer) Render(tracking vrapi.OVRTracking2, dt float64) vrapi.OVRLaye
 				})
 			}
 		}
+		log.Println("Target time", time.Now().Sub(t))
 
 		if debug {
 			for _, p := range pastPoints {
